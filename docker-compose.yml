@@ -1,0 +1,19 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: ai-stock-agent-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-stockagent}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-stockagent}
+      POSTGRES_DB: ${POSTGRES_DB:-stockagent}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    # Persisted data lives under the repo's data folder (gitignored), per the repo structure.
+    volumes:
+      - ./src/backend/data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-stockagent} -d ${POSTGRES_DB:-stockagent}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10

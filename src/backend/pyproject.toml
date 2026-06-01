@@ -1,0 +1,32 @@
+[project]
+name = "ai-stock-agent-backend"
+version = "0.1.0"
+description = "Knowledge-layer market-research agent — backend (data layer)"
+requires-python = ">=3.12"
+dependencies = [
+    "sqlalchemy[asyncio]>=2.0.30",
+    "asyncpg>=0.29",
+    "alembic>=1.13",
+    "pgvector>=0.3.0",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2",
+    "pytest-asyncio>=0.23",
+]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+# src/backend is the import root; tests import `app.*`.
+pythonpath = ["."]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.alembic]
+# Alembic config also lives in alembic.ini; this block documents the script location.
+script_location = "alembic"

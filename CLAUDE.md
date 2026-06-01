@@ -1,0 +1,94 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project status
+
+`ARCHITECTURE.md` describes the system; **`STRUCTURE.md` describes where code lives** — follow it.
+The **data layer is built** (`src/backend/app/db/` — `base.py`, `session.py`, `enums.py`,
+`payloads.py`, `models/`, `migrations/`). The **frontend and the rest of the backend** (tools, MCP
+server, agents, workflows, API, scheduler) are **not scaffolded yet** — those `app/` subdirs are empty.
+
+Read `ARCHITECTURE.md` and `STRUCTURE.md` in full before writing code; they are the source of truth
+and the sections below only summarize them.
+
+## Commands (backend)
+
+All backend commands run from `src/backend/` with the venv active (`source .venv/bin/activate`,
+or prefix with `.venv/bin/`). Postgres runs via docker-compose from the repo root.
+
+```bash
+# Database (pgvector Postgres) — from repo root
+docker compose up -d                      # start; data persists in src/backend/data/postgres/
+
+# From src/backend/
+python -m venv .venv && .venv/bin/pip install -e ".[dev]"   # one-time setup
+alembic upgrade head                      # apply migrations (builds the full schema)
+alembic revision --autogenerate -m "msg"  # create a migration after model changes
+alembic check                             # assert models match the DB (no drift)
+python -m scripts.seed                    # seed taxonomy + watchlist + prefs (idempotent)
+pytest                                    # run tests
+pytest tests/db/test_smoke.py             # the single data-layer smoke test
+```
+
+Config comes from the repo-root `.env` (copy `.env.example`); the app and docker-compose share it.
+Alembic lives at `app/db/migrations/` (`alembic.ini` at `src/backend/`).
+
+## Data layer conventions (already established)
+
+- **Coupling rule:** group/transact by write cadence — "couple what updates together, never couple
+  what doesn't." Models live in `app/db/models/` per STRUCTURE.md: `companies.py` (incl. taxonomy),
+  `market_data.py`, `news.py` (incl. `SectorAggregate`), `analysis.py` (scores+prose), `delivery.py`
+  (digest+pulse+notifications), `user.py`, `jobs.py`.
+- **DB models vs API schemas are separate** — don't reuse ORM models as response models.
+- **Every JSONB column has a Pydantic model** (`app/db/payloads.py`), bound via the `PydanticJSONB`
+  TypeDecorator in `app/db/base.py` — validated on write, typed on read.
+- **Every vector column carries its `embedding_model`** name. Embedding is fixed: `voyage-3`, 1024-dim
+  (`EMBEDDING_MODEL` / `EMBEDDING_DIM`). Changing it is an explicit backfill, not a silent swap.
+- **Taxonomy is lookup tables** (`sectors`, `industries`), not enums — extensible by INSERT/seed.
+  Closed sets (coverage_tier, significance_tier, …) are native PG enums in `app/db/enums.py`.
+- **Fixed constants live in `app/config.py`**, not seed files: `PULSE_CORE` (the pulse set's fixed
+  core; user mega-caps are `user_preferences.pulse_user`) and `DEFAULT_THRESHOLDS`. Curated-universe
+  seeding (taxonomy, watchlist) is an ops script at `src/backend/scripts/seed.py` — never inside `app/`.
+- **Migrations own all DDL.** The pgvector extension, enum types, and HNSW indexes are created in the
+  migration; the HNSW indexes are also declared on the models so `alembic check` stays clean.
+
+## What this is
+
+A single-user, always-on **knowledge-layer** agent for stock/market research. It researches, analyzes, and proactively surfaces what the user should read — organized by sector and significance. It does **not** trade, and the design draws a hard line between AI work and human work.
+
+## Inviolable constraints
+
+These are hard rules from `ARCHITECTURE.md`; violating any of them breaks the product's premise:
+
+- **The AI never recommends buy/sell/hold and never makes valuation calls.** Output is research, summaries, numeric scores, and dot-connecting insight — never a decision, recommendation, or speculation. Judgment, speculation, and looking ahead belong to the human.
+- **AI synthesis is presented alongside primary sources, never in place of them.** Article URLs are first-class content; AI summaries are orientation. Every prose output cites its source IDs.
+- **AI reaches the database only through predefined, read-only tools.** No AI-generated SQL, no arbitrary URL fetching. Agents compose tools; they don't own data access.
+- **No raw article body text is stored** — the AI summary is the canonical record.
+- **Join on `company_id`, never ticker.**
+- **Deep scoring (fundamental + sentimental) runs only on `coverage_tier = watchlist` + flagged sectors.** The broader "research surface" (discovered companies) gets lightweight tracking only — this is a deliberate cost boundary, not an oversight.
+- The embedding model is **fixed**; its name is stored alongside every vector. Changing it is an explicit backfill, never a silent swap. Likewise the LLM model name is stored on every analysis row.
+- All timestamps **UTC**; sectors come from one controlled vocabulary.
+
+## Architecture shape
+
+Four layers (detail in `ARCHITECTURE.md`):
+
+1. **Interface** — TypeScript UI, read-mostly, talks **only to FastAPI, never directly to Postgres**. Mirrors the email digest: top snapshot → sections by sector/macro → ranked article lists with summaries.
+2. **Application** — orchestrated **pipelines, not open agent planning** (chosen for predictable cost/behavior/debuggability). A fixed **tool registry** exposed over MCP; workflows compose those tools. Each agent step sees only the tools for that step and emits structured rows/scores/templated sections — not free-form chat. Failures log to a `jobs` table; no silent partial successes.
+3. **Data** — single **Postgres + pgvector**. Structured tables (companies as the spine + research surface, prices, financials, news_events, scores), JSONB for legitimately variable shapes (digest runs, pulse runs, prose, job state), and pgvector embeddings living as columns on the tables they describe — not a separate store.
+4. **Technical** — Python/FastAPI backend, MCP server, TypeScript frontend, scheduler (cron/APScheduler) on an always-on host.
+
+## Conventions that shape the code
+
+- **Every external dependency goes behind a single internal wrapper before its first use** — a provider swap (yFinance, news provider, notifier, Anthropic) should touch one file.
+- **Two distinct delivery shapes, kept separate** (separate templates + triggers): the *brief pulse* (movers + market snapshot, to iMessage/WhatsApp) and the *detailed digest* (curated reading list, by email). Both mirror into the in-app inbox.
+- **Research surface vs. deep coverage are separate concepts**, keyed by `coverage_tier` on `companies`. Don't conflate them.
+- **Prose is sparse, scores are dense.** Write a new prose row only on a genuine, threshold-crossing shift that differs meaningfully from the prior row; scores are numeric and historical.
+- Prompts live in a versioned `prompts/` directory, separate from schema migrations. Scoring rubrics carry a `rubric_version` so old scores stay interpretable.
+- Default to the latest Claude models and the Anthropic SDK with prompt caching: **Opus/Sonnet** for synthesis (snapshots, prose), **Haiku** for high-volume summarization at ingest.
+- Prefer simplicity over performance until measured. Streaming, multi-user, raw-text RAG, and open agent planning are explicitly deferred — add complexity only when current behavior measurably fails.
+
+## Safety note
+
+This is a knowledge layer with no trade execution. Keep it that way: any feature that would emit a recommendation, a buy/sell/hold, or a valuation call is out of scope by design, not a missing feature.
