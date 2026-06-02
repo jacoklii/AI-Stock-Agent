@@ -7,7 +7,7 @@ fully populated — used by Alembic's ``target_metadata`` and by tests.
 from __future__ import annotations
 
 from app.db.base import Base, FreshnessMixin, PydanticJSONB, TimestampMixin
-from app.db.session import SessionLocal, engine, get_session
+from app.db.session import SessionLocal, engine, get_session, readonly_session
 from app.db import models  # noqa: F401  populate Base.metadata with all mapped classes
 
 __all__ = [
@@ -18,5 +18,6 @@ __all__ = [
     "engine",
     "SessionLocal",
     "get_session",
+    "readonly_session",
     "models",
 ]

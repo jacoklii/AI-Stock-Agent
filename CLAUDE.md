@@ -5,9 +5,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project status
 
 `ARCHITECTURE.md` describes the system; **`STRUCTURE.md` describes where code lives** — follow it.
-The **data layer is built** (`src/backend/app/db/` — `base.py`, `session.py`, `enums.py`,
-`payloads.py`, `models/`, `migrations/`). The **frontend and the rest of the backend** (tools, MCP
-server, agents, workflows, API, scheduler) are **not scaffolded yet** — those `app/` subdirs are empty.
+The **data layer is built** (`src/backend/app/db/`). The **application-layer tools, triggers, and
+execution-rule "stops" are built**: `app/tools/`, `app/providers/` (yFinance + Voyage),
+`app/scheduler/` (cron-slot skeleton), and — in `app/workflows/` — the shared execution runtime
+(`runtime.py`, `concurrency.py`) and trigger declarations (`triggers.py`). **Still not scaffolded:**
+the actual workflow **pipelines** (`app/workflows/`), the `researcher` agent (`app/agents/`), the MCP
+server (`app/mcp_server/`), the FastAPI app (`app/api/`, `main.py`), and the frontend.
 
 Read `ARCHITECTURE.md` and `STRUCTURE.md` in full before writing code; they are the source of truth
 and the sections below only summarize them.
@@ -27,8 +30,9 @@ alembic upgrade head                      # apply migrations (builds the full sc
 alembic revision --autogenerate -m "msg"  # create a migration after model changes
 alembic check                             # assert models match the DB (no drift)
 python -m scripts.seed                    # seed taxonomy + watchlist + prefs (idempotent)
-pytest                                    # run tests
-pytest tests/db/test_smoke.py             # the single data-layer smoke test
+pytest                                    # run tests (needs Postgres up for db/tools/jobs tests)
+pytest tests/db/test_smoke.py             # data-layer smoke test
+pytest tests/tools tests/workflows        # tool contracts + execution-rule stops
 ```
 
 Config comes from the repo-root `.env` (copy `.env.example`); the app and docker-compose share it.
@@ -52,6 +56,33 @@ Alembic lives at `app/db/migrations/` (`alembic.ini` at `src/backend/`).
   seeding (taxonomy, watchlist) is an ops script at `src/backend/scripts/seed.py` — never inside `app/`.
 - **Migrations own all DDL.** The pgvector extension, enum types, and HNSW indexes are created in the
   migration; the HNSW indexes are also declared on the models so `alembic check` stays clean.
+
+## Application layer conventions (tools / triggers / stops)
+
+- **Tools are predefined, read-only, typed.** Each tool in `app/tools/` is a pure function taking an
+  injected `AsyncSession` (callers pass `readonly_session()` from `app/db/session.py`, so a write is
+  impossible at the DB) and returning a **Pydantic result model** — never an ORM row, free-form text,
+  or SQL. `research.py` (company/market/news/pulse/screen/similarity), `analysis.py` (scores/prose +
+  citations), `delivery.py` (dedupe lookup). Split is by subject, mirroring `db/models/`.
+- **The registry is the allowlist "stop."** Tools self-register via `@tool(...)` in
+  `app/tools/registry.py`; `get_tools_for(task)` returns the slice an agent step may use. Importing
+  `app.tools` populates `REGISTRY`. The future MCP server exposes exactly this set.
+- **One wrapper per external dependency.** `app/providers/` — `market.py` (yFinance quotes),
+  `embeddings.py` (Voyage query embedding). Sync libs are dispatched via `asyncio.to_thread`. A
+  provider swap touches one file. Embedding wrapper returns the model name with every vector.
+- **Execution rules are code, in `app/workflows/`** (the runtime the deferred pipelines run under):
+  `runtime.run_job(...)` wraps every run in a tracked `jobs` row (pending→running→succeeded/failed;
+  failures re-raise, never silent) + `with_retry`; `concurrency.company_lock` serializes per company,
+  `company_gate`/`gather_bounded` cap cross-company parallelism (in-process; a PG advisory lock is the
+  multi-process upgrade). The pipeline modules themselves are not built yet.
+- **Triggers + schedule are declarative skeletons.** `app/workflows/triggers.py` is the single source
+  of trigger declarations (scheduled/event/threshold/on_demand) bound to **workflow identifiers**
+  (placeholders until pipelines exist) — it lives in `workflows/` because event/threshold triggers
+  fire from inside workflows, and `scheduler/` may import `workflows/` but never the reverse.
+  `app/scheduler/schedule.py` derives the cron-slot table from the scheduled triggers and exposes a
+  `register(add_job)` hook — no live APScheduler loop yet. Cron times are UTC.
+- **Deferred on purpose:** `send_*` tools (need the notifier provider) and `compile_reading_list`
+  (needs the agent) ship with their dependent layers, not here.
 
 ## What this is
 

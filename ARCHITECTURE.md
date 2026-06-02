@@ -204,13 +204,13 @@ Embedding model is fixed and stored alongside the vector so future model changes
 - **Embeddings** — one fixed model (`text-embedding-3-small` or `voyage-3`). Chose fixed-model over flexibility to avoid silent retrieval drift.
 
 **Infrastructure**
-- **Always-on host** — small VPS or home server. Chose over laptop because research, monitoring, and scheduled pulses must survive sleep.
+- **Always-on host** — small VPS or on cloud (GCP). Chose over laptop because research, monitoring, and scheduled pulses must survive sleep.
 - **Scheduler** — cron or APScheduler. Chose lightweight over heavy orchestrator (Airflow, Prefect).
 - **Postgres + pgvector** — single store. Chose over multi-store for one backup, one query language, joins across structured + vector + JSONB.
 - **Secrets** — env file, not committed. One config layer.
 
 **Data scaling (v1 targets)**
-- Watchlist (deep coverage): ~20–50 companies.
+- Watchlist (deep coverage): ~50–100 companies.
 - Flagged sectors: ~3–8 (sector research universe a few hundred companies per sector).
 - Broader research surface (discovered tier): potentially hundreds of companies; lightweight tracking only.
 - Pulse set: ~7 fixed core instruments + ~4–8 user mega-caps.

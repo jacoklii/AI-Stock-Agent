@@ -26,6 +26,9 @@ AI-STOCK-AGENT/
     │   │   │       ├── prompt_top_snapshot.md
     │   │   │       └── prompt_followup.md
     │   │   ├── analysis/                          # pure-math: scoring, prose change detection (no LLM)
+    │   │   │       ├── fundamental_score.py                 
+    │   │   │       ├── sentiment_analysis.py      # contains scoring and prose change detection (passed to AI for evaluation).
+    │   │   │       └── prompt_followup.md
     │   │   ├── api/                               # FastAPI routes
     │   │   ├── db/
     │   │   │   ├── __init__.py                    # re-exports Base, session, all models
@@ -50,6 +53,9 @@ AI-STOCK-AGENT/
     │   │   ├── providers/                         # external API wrappers (yFinance, Finnhub, Anthropic, Notifier)
     │   │   ├── scheduler/                         # cron registrations only
     │   │   ├── tools/                             # peer of agents — used by agents, workflows, api, mcp_server
+    │   │   │   ├── __init__.py
+    │   │   │   ├── analysis.py                    # tools for analysis
+    │   │   │   └── research.py                    # tools for research and summarization
     │   │   ├── workflows/                         # orchestrated pipelines, thin
     │   │   ├── config.py                          # settings, pulse_core list, default thresholds
     │   │   └── main.py                            # FastAPI entry point
