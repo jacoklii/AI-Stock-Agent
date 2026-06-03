@@ -9,14 +9,13 @@ model, never an ORM row and never free-form text. ``company_id`` is the join key
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date
 
-from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import PULSE_CORE
-from app.db.enums import CoverageTier, SignificanceTier
+from app.db.enums import SignificanceTier
 from app.db.models.companies import Company
 from app.db.models.market_data import FinancialData, PriceHistory
 from app.db.models.news import NewsEvent
@@ -34,6 +33,15 @@ from app.tools.registry import (
     TASK_TOP_SNAPSHOT,
     tool,
 )
+from app.tools.tool_schema import (
+    CompanyResult,
+    FinancialRow,
+    NewsEventResult,
+    PriceRow,
+    ScreenCandidate,
+    ScreenFilters,
+    SimilarEvent,
+)
 
 # Significance ordering for "at least this tier" filters. Closed set, defined once.
 _SIGNIFICANCE_RANK: dict[SignificanceTier, int] = {
@@ -41,86 +49,6 @@ _SIGNIFICANCE_RANK: dict[SignificanceTier, int] = {
     SignificanceTier.notable: 1,
     SignificanceTier.significant: 2,
 }
-
-
-# --- Result models (tool contracts) -------------------------------------------
-
-
-class CompanyResult(BaseModel):
-    company_id: int
-    ticker: str
-    name: str
-    sector_id: int | None
-    industry_id: int | None
-    exchange: str | None
-    coverage_tier: CoverageTier
-
-
-class FinancialRow(BaseModel):
-    period_end: date
-    period_type: str
-    price: float | None
-    market_cap: float | None
-    pe: float | None
-    eps: float | None
-    capex: float | None
-    ebitda: float | None
-    revenue: float | None
-    net_income: float | None
-
-
-class PriceRow(BaseModel):
-    date: date
-    open: float | None
-    high: float | None
-    low: float | None
-    close: float | None
-    adj_close: float | None
-    volume: int | None
-
-
-class NewsEventResult(BaseModel):
-    news_event_id: int
-    company_id: int | None
-    industry_id: int | None
-    url: str
-    source: str | None
-    published_at: datetime
-    headline: str
-    tickers: list[str]
-    sentiment_score: float | None
-    significance_tier: SignificanceTier
-    summary: str
-
-
-class SimilarEvent(BaseModel):
-    """A semantic-search hit: the event plus its cosine *similarity* (1 - distance)."""
-
-    news_event_id: int
-    headline: str
-    published_at: datetime
-    significance_tier: SignificanceTier
-    summary: str
-    similarity: float
-
-
-class ScreenFilters(BaseModel):
-    """Typed inputs for ``screen_stocks`` — a parameterized screen, never AI-authored SQL."""
-
-    sector_id: int | None = None
-    industry_id: int | None = None
-    coverage_tier: CoverageTier | None = None
-    exchange: str | None = None
-    limit: int = 50
-
-
-class ScreenCandidate(BaseModel):
-    company_id: int
-    ticker: str
-    name: str
-    sector_id: int | None
-    industry_id: int | None
-    coverage_tier: CoverageTier
 
 
 # --- Helpers ------------------------------------------------------------------

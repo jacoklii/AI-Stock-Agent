@@ -9,22 +9,12 @@ it's registered (a predefined tool) but granted to no agent task.
 
 from __future__ import annotations
 
-from datetime import datetime
-
-from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.enums import Channel
 from app.db.models.delivery import NotificationHistory
 from app.tools.registry import tool
-
-
-class DedupeResult(BaseModel):
-    dedupe_key: str
-    already_sent: bool
-    channel: Channel | None = None
-    sent_at: datetime | None = None
+from app.tools.tool_schema import DedupeResult
 
 
 @tool(

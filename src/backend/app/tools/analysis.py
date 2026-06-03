@@ -13,7 +13,6 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -32,45 +31,10 @@ from app.tools.registry import (
     TASK_TOP_SNAPSHOT,
     tool,
 )
+from app.tools.tool_schema import CitationRef, LatestScores, ProseRow, ScoreRow
 
 _SCORE_MODEL = {ProseKind.fundamental: FundamentalScore, ProseKind.sentimental: SentimentalScore}
 _PROSE_MODEL = {ProseKind.fundamental: FundamentalProse, ProseKind.sentimental: SentimentalProse}
-
-
-# --- Result models (tool contracts) -------------------------------------------
-
-
-class ScoreRow(BaseModel):
-    kind: ProseKind
-    score: float
-    components: dict[str, float] | None
-    rubric_version: str
-    model_name: str
-    generated_at: datetime
-    data_through: datetime | None
-
-
-class LatestScores(BaseModel):
-    """Newest score on each axis (either may be absent for out-of-scope companies)."""
-
-    company_id: int
-    fundamental: ScoreRow | None
-    sentimental: ScoreRow | None
-
-
-class CitationRef(BaseModel):
-    news_event_id: int | None
-    source_ref: str | None
-
-
-class ProseRow(BaseModel):
-    prose_id: int
-    kind: ProseKind
-    body: str
-    model_name: str
-    generated_at: datetime
-    data_through: datetime | None
-    citations: list[CitationRef]
 
 
 # --- Helpers ------------------------------------------------------------------
