@@ -12,6 +12,8 @@ dependencies = [
     "pydantic-settings>=2.3",
     "yfinance>=0.2.40",
     "voyageai>=0.2.3",
+    "fastapi>=0.111",
+    "uvicorn[standard]>=0.30",
 ]
 
 [project.optional-dependencies]

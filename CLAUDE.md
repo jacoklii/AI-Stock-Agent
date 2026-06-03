@@ -5,12 +5,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project status
 
 `ARCHITECTURE.md` describes the system; **`STRUCTURE.md` describes where code lives** — follow it.
-The **data layer is built** (`src/backend/app/db/`). The **application-layer tools, triggers, and
-execution-rule "stops" are built**: `app/tools/`, `app/providers/` (yFinance + Voyage),
-`app/scheduler/` (cron-slot skeleton), and — in `app/workflows/` — the shared execution runtime
-(`runtime.py`, `concurrency.py`) and trigger declarations (`triggers.py`). **Still not scaffolded:**
-the actual workflow **pipelines** (`app/workflows/`), the `researcher` agent (`app/agents/`), the MCP
-server (`app/mcp_server/`), the FastAPI app (`app/api/`, `main.py`), and the frontend.
+The **data layer**, the **tools/triggers/stops**, the **workflow pipelines (as skeletons)**, and the
+**FastAPI internal API** are built: `app/db/`, `app/tools/`, `app/providers/` (yFinance + Voyage),
+`app/scheduler/`, `app/workflows/` (runtime + concurrency + triggers + 8 pipeline skeletons +
+`registry.py`), and `app/api/` + `app/main.py`. **Still not built** (the workflows' `TODO(...)`
+boundaries): the `researcher` agent (`app/agents/`), the `analysis/` scoring math, the Finnhub news +
+notifier providers, the MCP server (`app/mcp_server/`), and the frontend.
 
 Read `ARCHITECTURE.md` and `STRUCTURE.md` in full before writing code; they are the source of truth
 and the sections below only summarize them.
@@ -33,6 +33,7 @@ python -m scripts.seed                    # seed taxonomy + watchlist + prefs (i
 pytest                                    # run tests (needs Postgres up for db/tools/jobs tests)
 pytest tests/db/test_smoke.py             # data-layer smoke test
 pytest tests/tools tests/workflows        # tool contracts + execution-rule stops
+uvicorn app.main:app --reload             # internal API (read endpoints live; actions return 501)
 ```
 
 Config comes from the repo-root `.env` (copy `.env.example`); the app and docker-compose share it.
@@ -70,11 +71,22 @@ Alembic lives at `app/db/migrations/` (`alembic.ini` at `src/backend/`).
 - **One wrapper per external dependency.** `app/providers/` — `market.py` (yFinance quotes),
   `embeddings.py` (Voyage query embedding). Sync libs are dispatched via `asyncio.to_thread`. A
   provider swap touches one file. Embedding wrapper returns the model name with every vector.
-- **Execution rules are code, in `app/workflows/`** (the runtime the deferred pipelines run under):
+- **Execution rules are code, in `app/workflows/`** (the runtime the pipelines run under):
   `runtime.run_job(...)` wraps every run in a tracked `jobs` row (pending→running→succeeded/failed;
   failures re-raise, never silent) + `with_retry`; `concurrency.company_lock` serializes per company,
   `company_gate`/`gather_bounded` cap cross-company parallelism (in-process; a PG advisory lock is the
-  multi-process upgrade). The pipeline modules themselves are not built yet.
+  multi-process upgrade).
+- **Workflow pipelines are thin skeletons** (`app/workflows/<name>.py`): one `async def run(...)`
+  wrapped in `run_job(WF_*)`, reads via tools under `readonly_session`, deterministic writes via
+  `SessionLocal`, per-company work under `company_lock`/`gather_bounded`. Each deferred step is an
+  `async def _helper(...)` that `raise NotImplementedError("TODO(agent|news|notifier|scoring): …")` —
+  the named boundary is where the agent / Finnhub / notifier / `analysis/` scoring plugs in.
+  `workflows/registry.py` maps each `WF_*` id → its `run` callable (consumed by scheduler + API).
+- **The API reads the DB directly; the tools-only rule binds the AI, not FastAPI.** `app/api/` +
+  `app/main.py`: read endpoints are wired (reuse read tools where they fit, else direct read-only
+  query) and mapped into `api/schemas.py` wire models (a 4th model kind, separate from ORM / JSONB /
+  tool DTOs); action + workflow-trigger endpoints are defined but return `501` until the pipelines
+  and write paths land. `api/deps.py` provides `ro_session` / `rw_session`.
 - **Triggers + schedule are declarative skeletons.** `app/workflows/triggers.py` is the single source
   of trigger declarations (scheduled/event/threshold/on_demand) bound to **workflow identifiers**
   (placeholders until pipelines exist) — it lives in `workflows/` because event/threshold triggers
