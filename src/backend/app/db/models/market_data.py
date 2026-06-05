@@ -59,7 +59,7 @@ class FinancialData(Base, TimestampMixin):
     net_income: Mapped[Decimal | None] = mapped_column(_MONEY, nullable=True)
 
 
-class CatalystCalendar(Base, TimestampMixin):
+class CatalystCalendar(Base, TimestampMixin): 
     """Earnings / dividend / ex-dividend dates. Variable details go in ``payload``."""
 
     __tablename__ = "catalyst_calendar"

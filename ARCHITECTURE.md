@@ -1,226 +1,304 @@
 # DESIGN
+
 ## GOAL
-Create an agentic AI system that does the market research I would do, surfaces what I should know, and keeps me current — without making decisions for me.
+Create an agentic AI system that's my research partner and research analyst. It does the deep research I can't do alone — across industries, supply chains, futures (AI, quantum, aerospace, finance), macro and geopolitics — surfaces what genuinely matters, filters noise, and points me at patterns with data. It never decides for me.
 
 ### AI-Specific
-Repetitive, complex workflows, insights, and timely tasks belong to the AI. It continuously researches the market, sectors I care about, and companies it has touched; analyzes what it finds; and synthesizes updates so I stay current.
+Repetitive workflows, signal-filtering, pattern recognition, and timely tasks belong to the AI. It runs in **shifts**: bounded deep-research sessions where it pursues investigations, interleaved with **rest periods** where automated breadth coverage continues. When automation surfaces something substantive, the agent can be called into a session.
 
 ### Human-Specific
-Leave the complex reasoning, judgement, and speculations to the user. AI should **NEVER** replace decision-making, observations, speculations, and future-thinking/looking ahead.
-Interpret how social, political, and market events will affect the stock market, a stock, and the future. Also catch what the AI got wrong.
+Complex reasoning, judgement, speculation, valuation, and decisions stay with me. I direct what gets investigated, redirect threads, decide what to act on, and catch what the AI got wrong. The agent never recommends buy/sell/hold and never makes valuation calls.
 
 ## The 3 Aspects
 
-- **Researches** — stocks & funds, sectors, global events, and market news. Research is the primary loop; everything else flows from it.
+- **Researches** — industries, sectors, supply chains, global events, futures, macro and geopolitics. Research is the primary loop. The watchlist is downstream of research, not its boundary.
 
-- **Analyzes** — summarizes recent news and events for closely-covered companies and sectors, identifies historical patterns, helps me understand the industry and what I'm buying.
+- **Analyzes** — synthesizes patterns from data, identifies historical analogs, distinguishes signal from noise. Output is observations + supporting data + clear reasoning. Never conclusions.
 
-- **Updates** — proactively surfaces the articles I should read, organized by sector and significance, with the AI's synthesis as orientation alongside — never in place of the sources.
+- **Updates** — proactively surfaces findings the agent has made, organized by industry/sector/macro, with article URLs as the primary content and the agent's synthesis alongside.
+
+---
 
 # ARCHITECTURE
 
 ## Requirements
 
 **Functional**
-- Continuously research watchlist, flagged sectors, and the broader market.
-- Answer on-demand research (stock, sector, theme, event) from stored data where possible.
-- Deep analysis (scores always; prose on shift) for watchlist + flagged sectors. Lightweight tracking for the broader research surface.
-- Auto-classify event significance from structural signals (price impact, volume, multi-source coverage, sentiment).
-- Two update shapes: **brief pulse** (iMessage/WhatsApp + platform) and **detailed digest** (email + platform).
-- Article URLs are primary; AI summaries are orientation. Every prose output cites sources.
-- Platform mirrors the email: snapshot up top, sections with article lists below.
+- Three-layer coverage: **global movement** (macro/supply chain/geopolitics, filtered for substantiveness), **critical industries + sectors** (curated set, ongoing reads), **watchlist** (close coverage, mostly user-chosen).
+- Two operating modes: **breadth** (automated, restricted tools, single-step outputs) and **deep** (autonomous, expanded tools, multi-step investigation loops).
+- Substantive-signal classification at ingest separates signal from noise; noise is tagged and shelved, not dropped.
+- Investigation threads as the agent's working memory — topic, open questions, accumulated findings, status.
+- Chat is the primary direction interface — start, redirect, pause, or kill threads; get briefings; adjust budget.
+- Pattern synthesis with a strict output shape: three or more independent substantive inputs, shown with data and reasoning.
+- Active sessions are bounded (wall-clock + token budget); automation runs continuously through rest periods.
+- Two delivery shapes: **brief pulse** (iMessage/WhatsApp + platform) and **detailed digest** (email + platform).
+- Article URLs are primary; AI summaries are orientation alongside. Every output cites sources.
 
 **Non-functional**
-- Single user, always-on.
-- Cost-bounded: deep analysis scoped; research surface broader but lightweight.
+- Single user.
+- Always-on for breadth automation; deep sessions bounded by schedule, triggers, and budget.
+- Cost-bounded by **pacing and concurrency** (daily/weekly token ceiling, ≤3 active deep threads, agent self-throttles).
 - Provider-swappable (one wrapper per external dependency).
-- Traceable (every output ties back to its inputs).
-- Knowledge-layer only; no buy/sell/hold.
+- Traceable (every finding, pattern, and prose ties back to its inputs).
+- Knowledge-layer only; no buy/sell/hold, no valuation calls.
 - Failed jobs visible and re-runnable.
 
 ## Constraints
 
 **Hard**
 - AI never recommends buy/sell/hold or makes valuation calls.
-- AI accesses DB only through predefined tools (read-only). No AI-generated SQL.
-- Every prose row stores source IDs.
-- **AI synthesis is presented alongside primary sources, never in place of them.** Article URLs are first-class; summaries are orientation.
-- Embedding model is fixed; changing it is an explicit backfill, not a silent swap.
-- No raw article body text stored — summaries are the canonical record.
+- "Look at this" outputs require **three or more independent substantive inputs**, each shown with data and reasoning. No vibes, no single-source claims.
+- AI **reads freely** through breadth tools, deep-mode tools, and MCP. AI **writes only through specific paths**; no raw SQL against production data, no arbitrary state changes.
+- Every prose, finding, and pattern row stores source IDs.
+- Noise is **tagged and shelved** in `noise_audit`, never silently deleted.
+- Cache holds fetched content with TTL; persistent storage holds **summaries and key findings only** — never whole transcripts or article bodies.
+- Embedding model is fixed; changes are explicit backfills.
 - `company_id` for joins, never ticker.
-- **Deep scoring** (fundamental + sentimental) runs only on watchlist + flagged sectors. Research surface is broader by design.
-- All timestamps UTC; sectors from one controlled vocabulary.
+- All timestamps UTC; sectors and industries from controlled vocabularies.
 
 **Soft**
-- One Postgres over multi-store.
-- Scheduled batch over streaming.
-- Predefined tools over open agent planning.
-- **One agent until role divergence emerges.** Split when a new agent would have a fundamentally different contract (inputs, outputs, cadence, operating mode) — not when an existing agent has multiple tasks.
-- Simplicity over performance until measured.
-- Retention: 90d routine / 2y notable / indefinite significant.
+- One Postgres + pgvector over multi-store.
+- Predefined tools for breadth; expanded tools for deep research.
+- Daily and weekly token budget; agent throttles itself to fit.
+- Active session capped at 1–3 hours wall-clock; agent rests after.
+- Cache-first on web tool calls; bypass only when explicitly told or when accuracy demands freshness.
+- Findings-first on deep research; check CAG before fetching.
+- Retention: news events 90d / 2y / indefinite by significance; threads retained while active + 90d after close; key findings extracted to permanent store before thread closes.
 - Sparse prose, dense scores.
-- Email + brief channels first; on-demand-via-message deferred.
-- New external dependency goes behind a wrapper before its first use.
+- One agent until role divergence emerges.
+- New external dependency behind a wrapper before first use.
 
 ## Change & Separation
 
 - External APIs behind internal wrappers — provider swap touches one file.
 - Prompts in versioned `prompts/`, separate from schema migrations.
-- Scoring rubrics versioned (`rubric_version` on score rows) — old scores remain interpretable.
+- Scoring rubrics versioned (`rubric_version` on score rows).
 - Embedding model name stored alongside every vector; LLM model name on every analysis row.
 - Daily prices / quarterly financials / ad-hoc news / sparse prose — separate tables, separate cadences.
-- **Research surface vs. deep coverage are separate concepts.** Any company the AI has touched lives in `companies`; only those with `coverage_tier = watchlist` get deep scoring.
+- **Research surface vs. deep coverage are separate concepts.** Coverage tier on `companies` lives in one column; deep coverage is a property of where the agent is currently investigating, not a permanent label.
+- **Breadth automation vs. deep research are separate modes.** Same agent, different tool allowlist and execution model.
+- **Substantiveness vs. significance are separate filters.** Substantiveness gates ingestion ("is this signal or noise?"); significance ranks what survives ("how big a deal is this?").
+- **Cache vs. persistent storage are separate.** Cache holds full fetched content with TTL; persistent stores only summaries and findings. Promotion from cache to persistent is explicit.
+- **Thread state (working memory) vs. analysis state (durable record) are separate.** Threads are mutable and short-lived; analysis is append-only and long-lived.
 - **Brief pulse vs. detailed digest are separate delivery shapes** with separate templates and triggers.
-- **Agents specialize by role, not by task.** Multiple prompts within one agent are fine. Multiple agents for one role is overhead.
-- **When an agent task grows beyond one LLM call** — needing intermediate state, multiple decision points, or branching logic — **it has become a workflow.** Workflows are the home for multi-step logic; if the workflow's sub-tasks are role-distinct from `researcher`, a specialized agent is added to handle them.
+- Agents specialize by role, not by task. Multiple prompts within one agent are fine; multiple agents for one role is overhead.
+- When a task grows beyond a single LLM call — needing intermediate state, multiple decisions, branching — it has become a workflow. Specialized agents are added only when role-distinct from `researcher`.
 - UI talks only to FastAPI, never directly to Postgres.
 - Tools are pure functions; agents compose them but don't own them.
+
+---
 
 ## Layers
 
 ### 1. Interface Layer
 
-Read-mostly; surfaces state the data layer already holds. No computation in the UI. **Article URLs are the primary content; AI summaries are orientation alongside.**
+Read-mostly with one major exception: the chat panel is a direction surface. Article URLs are the primary content; AI synthesis is orientation alongside.
 
 **Views**
-- **Home (detailed digest mirror)** — snapshot at the top synthesizing what's going on right now, then sections by sector / macro. Each section has its own snapshot followed by a ranked article list. Every article shows its URL and the AI's brief summary underneath. Mirrors the email so platform and inbox stay in parity.
-- **Market pulse** — current state of the pulse set (fixed core + user mega-caps), latest scheduled pulse displayed, button to trigger an on-demand pulse.
-- **Company detail** — for any company in `companies`: ranked article list with summaries (primary), score trajectory chart if watchlisted, latest prose alongside, source list.
-- **Sector view** — section snapshot, ranked article list with summaries, sector aggregate scores, surfaced movers.
-- **Alerts inbox** — chronological notifications, each links to its underlying article or finding.
+- **Home** — agent state at a glance: what's the agent working on, what did it find today, current session indicator (deep / resting / automation), recent patterns, top-of-digest snapshot. The digest is a section on home, not the whole of home.
+- **Chat** — primary direction surface. Persistent conversation. Start/redirect/pause/kill threads, ask for briefings, adjust budget, promote findings.
+- **Threads** — list of active and recent investigations. Each shows topic, open questions, key findings, sources, status, what the agent is doing next.
+- **Industries** — curated critical-industries set (AI, semis, aerospace, defense, manufacturing, quantum, chemicals, finance/banking, …). Each has its current read, recent substantive events, active threads touching it.
+- **Sector view** — same shape as industries but for the broader sector taxonomy.
+- **Company detail** — ranked article list with summaries, score trajectory if covered, prose alongside, threads touching this company.
+- **Market pulse** — pulse-set state (fixed core + user mega-caps), latest scheduled pulse, on-demand trigger.
+- **Alerts inbox** — chronological notifications, each links to the underlying finding or article.
+- **Noise audit** — items filtered as non-substantive, with reason. User can promote back to signal.
 
 **Interactions**
-- Promote/demote company to watchlist; attach metadata (why, what thresholds matter).
-- Flag/unflag a sector for deep research.
-- Edit the user mega-caps in the pulse set.
-- Open any article directly (URLs clickable everywhere they appear).
-- Mark an article read; mark notifications dismissed.
-- Ask follow-ups scoped to a company, sector, or theme — answered from stored research. External research if needed
+- Chat with the agent (primary direction).
+- Promote / demote a company on the watchlist.
+- Edit the critical-industries list.
+- Edit user mega-caps in the pulse set.
+- Start / redirect / pause / close threads.
+- Raise / lower the weekly token budget.
+- Promote a noise item back to signal.
+- Open any article URL (clickable everywhere).
+- Mark notifications read / dismissed.
 
 **Notifications**
-- **Email** — detailed digest. Always starts with the top-level snapshot. Sections by sector / macro: section snapshot + article URLs each with a brief summary underneath, include key stocks (1 - 5) to watch for each.
-- **iMessage / WhatsApp** — brief pulse. Pulse set state and a short snapshot of current market movement.
+- **Email** — detailed digest. Starts with top snapshot, then sections by industry / sector / macro. Each section has its snapshot + article URLs with brief summaries underneath.
+- **iMessage / WhatsApp** — brief pulse. Pulse-set state + short market-movement snapshot.
 - **In-app inbox** — mirrors what was sent on either channel.
 - TypeScript: Chose for typed UI, shareable schemas with FastAPI.
 
-**Freshness** — every score, prose, article, and pulse displays its `generated_at` / `data_through`. Stale data must look stale.
+**Freshness** — every score, prose, article, pattern, and pulse shows its `generated_at` / `data_through`. Stale data must look stale.
 
 ### 2. Application Layer
 
-Orchestrated pipelines, not open agent planning. Chose for predictable cost, behavior, and debuggability.
+Two operating modes, one agent. Breadth is orchestrated and predictable; deep is autonomous within bounded sessions.
+
+**Operating modes**
+- **Breadth mode** — called inside automation pipelines. Restricted tool allowlist. Single-step structured outputs. Predictable cost. Runs continuously.
+- **Deep mode** — runs inside bounded sessions. Expanded tool allowlist including web search/fetch, SEC filings, transcripts. Multi-step investigation loops. Owns thread state. Cost-bounded by session budget.
 
 **Agent**
-- One `researcher` agent. Handles all LLM work via task-dispatched prompts: article summaries, significance classification, section snapshots, company prose, pulse snapshots, top-of-digest synthesis, on-demand follow-ups.
-- Single agent because all outputs share the same role — read inputs, produce a structured deliverable.
-- **New agents added only when a new role emerges** (different inputs, outputs, cadence, or operating mode) — not when an existing agent has multiple tasks.
-- **When a task grows beyond a single LLM call** (intermediate state, multiple decisions, branching), it has become a workflow. A specialized agent is added only if its sub-tasks are role-distinct from `researcher`.
-- Each task carries its own prompt, model, tool allowlist, and output schema. Agent is a thin dispatcher.
+- One `researcher` agent with mode-aware task dispatch. Tasks: per-article summary, substantiveness classification, significance classification, section snapshot, industry read, company prose (fundamental + sentimental), pulse snapshot, top-of-digest synthesis, pattern synthesis, deep investigation, on-demand follow-up.
+- Each task carries: operating mode, prompt, model, tool allowlist, structured output schema.
+- New agents added only when a new role emerges (different inputs, outputs, cadence, or operating mode).
+- When a task grows beyond a single LLM call — needing intermediate state, multiple decisions, branching — it has become a workflow. A specialized agent is added only if role-distinct from `researcher`.
 
-**Tools (predefined, MCP-exposed)**
+**Tools (breadth mode, MCP-exposed)**
 - `get_company` — identity + coverage tier.
 - `get_financials`, `get_price_history` — time-series rows.
-- `screen_stocks` — parameterized SQL screen, ranked candidates.
-- `get_news_events` — by company or sector, filtered by significance.
+- `screen_stocks` — parameterized SQL screen.
+- `get_news_events` — by company / sector / industry, filtered by significance and substantiveness.
 - `get_pulse_state` — latest prices/changes for the pulse set.
-- `get_latest_scores`, `get_score_history`, `get_latest_prose` — watchlist + flagged sectors only.
+- `get_latest_scores`, `get_score_history`, `get_latest_prose` — watchlist + flagged industries only.
 - `search_similar_events` — semantic search over stored summaries and prose.
-- `compile_reading_list` — ranks events, groups by sector/macro, generates snapshots + summaries via agent.
+- `classify_substantiveness` — signal / noise / ambiguous, with reason.
+- `compile_reading_list` — ranks events, groups by section, generates snapshots + summaries via agent.
 - `send_imessage` (AppleScript), `send_whatsapp` (pywhatkit), `send_email` (SMTP).
 - `notification_history` — dedupes across channels before sending.
 
-**Workflows (pipelines)**
-- **Daily research & digest** — ingest → refresh scores → researcher generates section snapshots, article summaries, top-of-digest synthesis → assemble → email + platform.
-- **Market pulse** — morning/midday/close → fetch pulse state → researcher generates snapshot → iMessage/WhatsApp + platform.
-- **News ingest** — pull events → classify significance → embed summaries → write rows → enqueue watchlisted companies for re-scoring.
-- **Sector research** — aggregate sector scores, identify movers, surface notable activity → feeds digest sections.
-- **On-demand research / pulse** — answer from stored research first; fetch fresh only if missing or stale.
-- **Significance re-check** — re-evaluate older events against subsequent price/volume; promote tier if warranted.
+**Tools (deep mode additions)**
+- `web_search` — open-ended search.
+- `web_fetch` — fetch a specific URL.
+- `fetch_sec_filing` — 10-K, 10-Q, 8-K by company.
+- `fetch_earnings_transcript` — earnings call transcripts.
+- `cache_get`, `cache_set` — short-term TTL cache for fetched content.
+- `findings_get`, `findings_set` — CAG layer; the agent checks here before fetching externally.
+- `rag_query_threads` — semantic search across the agent's own thread findings and patterns.
+- `synthesize_pattern` — combines ≥3 substantive inputs into a pattern row with data and reasoning. Refuses to write a pattern that doesn't meet the threshold.
+- `start_thread`, `update_thread`, `close_thread`, `link_thread_to_analysis` — thread state management. Write-path tools, carefully scoped.
+
+**Workflows — automation pipelines (breadth)**
+- **Daily research & detailed digest** — ingest data → refresh scores → researcher generates section snapshots, article summaries, top-of-digest synthesis → assemble digest → email + platform home.
+- **Market pulse** — morning/midday/close → fetch pulse-set state → researcher generates snapshot → iMessage/WhatsApp + platform.
+- **News ingest** — pull events → researcher classifies substantiveness (signal/noise/ambiguous) → for signal, classify significance + embed summary + write rows → for noise, write to `noise_audit` → for ambiguous, surface to user → enqueue affected covered companies for re-scoring.
+- **Sector + industry research** — ongoing reads per critical industry and tracked sector. Aggregate scores, identify movers, surface notable activity.
+- **Significance + substantiveness re-check** — re-evaluate older events against subsequent data; promote tier or reclassify if warranted.
+
+**Workflows — deep research sessions**
+- **Scheduled deep shift** — runs on a configurable schedule. Agent picks priority threads to advance, or opens new threads from converging signal.
+- **User-directed session** — chat triggers a deep investigation on a topic.
+- **Signal-triggered wakeup** — automation detects converging substantive signal (≥3 independent inputs pointing the same direction). Agent wakes briefly to assess; either opens a thread or returns to rest.
 
 **Triggers**
-- Scheduled (digest; pulse morning/midday/close; sector research).
-- Event-driven (news ingest → re-scoring).
-- Threshold-driven (score shift → prose regeneration).
-- On-demand (interface request).
+- Scheduled (digest; pulse morning/midday/close; sector/industry research; deep shifts).
+- Event-driven (news ingest → re-scoring; signal convergence → agent wakeup).
+- Threshold-driven (score shift → prose regeneration; pattern convergence → "look at this" output).
+- On-demand (chat).
+
+**Session manager**
+- Owns session lifecycle: wakeup → active → rest.
+- Enforces wall-clock cap (1–3 hours) and token budget per session.
+- Manages mode transitions (breadth ↔ deep).
+- Logs to `agent_sessions` for cost visibility and audit.
+
+**Investigation loop (deep mode)**
+- `gather → reason about what was found → decide what's missing → gather more → synthesize → continue / rest / close`.
+- Cache-first on every external read; findings-first before any external read.
+- Terminates on: user stop, time/token budget exhausted, agent decides the open question is answered, no new substantive inputs available.
+- On close: extract key findings to `thread_findings`, link artifacts, mark thread closed. Thread retained for 90d.
 
 **Execution rules**
-- Agent sees only the tools relevant to the current task.
-- Never writes SQL or fetches arbitrary URLs.
+- Agent sees only the tools relevant to the current mode + task (allowlist per task).
 - Outputs are structured rows + citations — not free-form chat.
-- Failures logged to `jobs`; workflow retries or fails cleanly.
-- Concurrency: one workflow per company; small parallelism across companies.
+- Failures logged to `jobs`; workflows retry or fail cleanly.
+- Concurrency: ≤3 active deep threads; small parallelism across companies in breadth pipelines.
+- Pacing: daily/weekly token budget; agent self-throttles to fit.
 
 ### 3. Data Layer
 
-High-quality data, kept based on significance. Long retention for items that drive deep value (major decisions, market shifts); short retention for noise.
+High-quality data, kept based on significance. Three-layer coverage maps to three different storage cadences. Cache and persistent storage are strictly separate.
 
 #### Structured (relational tables)
 
-- **`companies`** — the spine and the **research surface**. `[ticker, name, sector, sub-industry, exchange, coverage_tier]`. Every stock the AI has ever touched. `coverage_tier`: `watchlist` (deep coverage) / `discovered` (lightweight tracking, surfaced by research) / `archived`.
-- **Watchlist metadata** — per-stock context for watchlisted companies: why added, why relevant, what thresholds matter, when added.
-- **Price history** — daily prices only. Intraday pulled on demand from yFinance when needed.
-- **Financial data & history** — `[price, market cap, P/E, EPS, CAPEX, EBITDA, ...]`. Time-series, one row per company per period. Populated for watchlist + flagged-sector companies.
+- **`companies`** — the spine and the research surface. `[ticker, name, sector, sub_industry, exchange, coverage_tier]`. Every stock the AI has ever touched. `coverage_tier`: `watchlist` (deep coverage, mostly user-chosen) / `industry_critical` (notable within a critical industry) / `discovered` (lightweight tracking from research) / `archived`.
+- **Watchlist metadata** — per-stock context: why added, why relevant, thresholds, when added.
+- **`industries`** — controlled vocabulary of critical industries. `[name, parent_sector, watch_reason, added_at]`. User-editable.
+- **Price history** — daily prices only. Intraday pulled on demand from yFinance.
+- **Financial data & history** — `[price, market cap, P/E, EPS, CAPEX, EBITDA, ...]`. Time-series, one row per company per period. Watchlist + industry_critical only.
 - **Catalyst / earnings calendar** — earnings dates, dividends, ex-dividends.
-- **User preferences & alerts** — interested sectors, role each sector plays in portfolio, default thresholds, notification channels, quiet hours, plus the **market pulse set**: `pulse_core` (fixed: SPY/VOO, DJW, QQQ, gold, 10Y, DXY, VIX) and `pulse_user` (user-chosen mega-caps).
-- **Notification / alert history** — what was sent, when, on which channel, with what template. Prevents duplicates across channels and across sources covering the same event.
-- **News events** — metadata + AI summary per event: `[url, source, published_at, headline, tickers, sentiment_score, significance_tier, summary, embedding]`. Tracked for any company the AI touches (full research surface), not just the watchlist. URL is first-class display content. Original article body is **not** stored — the summary is the canonical record.
-- **Sector aggregates** — sector ETF prices, sector breadth, rolled-up sentiment.
-- **Fundamental scores** — numeric, dense, historical. **Watchlist + flagged sectors only.** Not generated across the broader research surface — deliberate cost/focus decision.
-- **Sentimental scores** — numeric, dense, historical. Same scope as fundamental scores.
+- **User preferences & alerts** — interested sectors, **critical industries list**, role each industry plays, default thresholds, notification channels, quiet hours, **session schedule, daily/weekly token budget, cache TTL preferences**, plus the **market pulse set**: `pulse_core` (fixed: SPY/VOO, DJW, QQQ, gold, 10Y, DXY, VIX) and `pulse_user` (user mega-caps).
+- **Notification history** — what was sent, when, on which channel, with what template. Dedup across channels and sources.
+- **News events** — metadata + AI summary per event: `[url, source, published_at, headline, tickers, sentiment_score, significance_tier, substantiveness, summary, embedding]`. `substantiveness` is `signal` / `noise` / `ambiguous`. URL is first-class display content. Original body **not** stored — summary is the canonical record.
+- **`noise_audit`** — items filtered as non-substantive. `[event_id, reason, classified_at, promoted_back (bool)]`. Queryable; user can promote a row back to signal.
+- **Sector aggregates** — sector ETF prices, breadth, rolled-up sentiment.
+- **`industry_reads`** — current AI read on each critical industry. Sparse, change-triggered. Similar shape to prose: prose text, embedding, supporting source IDs, `generated_at`, `superseded_at`.
+- **Fundamental scores** — numeric, dense, historical. Watchlist + industry_critical only.
+- **Sentimental scores** — same scope and shape.
+- **`patterns`** — synthesized observations. `[generated_at, pattern_description, supporting_inputs (jsonb, ≥3 required), reasoning, status (active/resolved/invalidated), embedding]`. This is the "look at this" output, stored. The `≥3 supporting_inputs` invariant is enforced at the tool level.
+- **`agent_sessions`** — session log. `[started_at, ended_at, trigger (user/signal/scheduled), mode, thread_ids (jsonb), tokens_used, status]`. Cost visibility and audit trail.
 
 #### Semi-structured (JSONB columns)
 
-Used where the shape of a field varies legitimately by row type. Queryable fields stay structured; variable payloads go in JSONB.
+Queryable fields stay structured; variable payloads go in JSONB.
 
-- **Reading list runs** — one row per compiled digest: `[generated_at, top_snapshot, sections (jsonb: ordered list of {section_title, snapshot, article_refs[]}), source_event_ids[]]`. Article refs point into `news_events`; the digest doesn't duplicate article content.
-- **Pulse runs** — one row per pulse: `[generated_at, slot (morning/midday/close/on-demand), pulse_snapshot, instruments (jsonb), channel_sent]`.
-- **Fundamental prose** — sparse rows, one per genuine shift in the AI's read. Stored only when inputs move beyond threshold and the new prose differs meaningfully from the previous. **Insights that connect dots — never a piece of decision.**
-- **Sentimental prose** — same shape and rule as fundamental prose.
-- **Job/run state** — `[job_type, status, started_at, completed_at, error_message, params (jsonb), result_summary (jsonb)]`. Queryable fields are columns; job-specific inputs/outputs are JSONB.
-- **Source provenance / citations** — links each analysis row to the news_events and data sources that fed it.
+- **`threads`** — investigation state. `[id, topic, open_questions (jsonb), status (active/paused/closed), opened_at, last_active_at, closed_at, token_budget_used, parent_thread_id]`. Working memory; mutable.
+- **`thread_findings`** — append-only findings within a thread. `[thread_id, generated_at, finding, supporting_inputs (jsonb), confidence_signals (jsonb), embedding]`. Read by the CAG layer.
+- **`thread_artifacts`** — pointers from threads to news_events, scores, prose, patterns, external URLs. Provenance for everything a thread produced.
+- **Reading list runs** — `[generated_at, top_snapshot, sections (jsonb: ordered list of {section_title, snapshot, article_refs[]}), source_event_ids[]]`. Article refs point into `news_events`.
+- **Pulse runs** — `[generated_at, slot (morning/midday/close/on-demand), pulse_snapshot, instruments (jsonb), channel_sent]`.
+- **Fundamental prose** — sparse rows, one per genuine shift in the read. Stored only when inputs move beyond threshold and the new prose differs meaningfully from the previous. Insights that connect dots — never a piece of decision.
+- **Sentimental prose** — same shape and rule.
+- **Job / run state** — `[job_type, status, started_at, completed_at, error_message, params (jsonb), result_summary (jsonb)]`.
+- **Source provenance / citations** — links each analysis, finding, and pattern to the news_events and external sources that fed it.
+
+#### Cache layer (separate from persistent storage)
+
+- **`cache`** — short-term fetched content. `[url, fetched_at, ttl_seconds, content, content_hash]`. Cleared on TTL or manual bypass. Read on every web tool call. Never promoted to persistent storage; only extracted findings are.
 
 #### Embeddings (pgvector columns)
 
-Embeddings live as columns on the tables they describe — not as a separate store.
+Embeddings live as columns on the tables they describe.
 
-- On `news_events.summary` — "find past events similar to this one." Powers research across the broader surface and helps the reading-list compiler cluster related coverage.
-- On `fundamental_prose` and `sentimental_prose` — "find past analyses with similar themes," and used to detect whether newly generated prose differs meaningfully from the previous row.
+- `news_events.summary` — find past events similar to this one. Powers research across the broader surface.
+- `fundamental_prose`, `sentimental_prose` — find past analyses with similar themes; detect whether new prose differs from previous.
+- `industry_reads` — find past industry reads with similar themes.
+- `patterns.pattern_description` — detect pattern recurrence.
+- `thread_findings.finding` — RAG over the agent's own research history.
 
-Embedding model is fixed and stored alongside the vector so future model changes are detectable.
+Embedding model is fixed and stored alongside every vector.
 
 ### 4. Technical Layer
 
 **External APIs**
-- **yFinance** — prices, financials, pulse-set quotes. Chose for simplicity/access (over Polygon, IEX paid tiers).
-- **News provider** — Finnhub. Driven by depth using the free tier. Covers the broader research, sentiment scoring, not just watchlist.
+- **yFinance** — prices, financials, pulse-set quotes. Chose for simplicity/access.
+- **Finnhub** — news, sentiment, catalyst/earnings calendar, insider sentiment, transcripts. Chose for free-tier viability + built-in tagging + overlap with multiple data needs.
 - **Anthropic API** — Claude models. Chose for analysis quality and native tool/MCP support.
-- **Notification providers** — SMTP (email), iMessage bridge or WhatsApp Business API. Wrapped behind `send_message` for either iMessages or WhatsApp, and `send_email`
+- **Web search provider** — TBD (Tavily / Brave Search / SerpAPI). Choice driven by cost and search quality for deep research.
+- **SEC EDGAR** — filings. Free, direct.
+- **Notification providers** — SMTP (email), iMessage bridge (AppleScript), WhatsApp (pywhatkit). Wrapped behind a single `Notifier` interface.
+
 **Internal APIs**
-- **FastAPI** — data + workflow endpoints to the TypeScript UI. Chose for async, typed, Python-native (over Flask, Django).
-- **MCP server** — exposes tool registry to the AI. Chose for one tool interface across Claude Code (dev) and runtime.
+- **FastAPI** — data + workflow endpoints to the TypeScript UI. Async, typed, Python-native.
+- **MCP server** — exposes tool registry to the AI. Two tool surfaces (breadth + deep), selected by session mode. Same MCP server, different allowlists.
+
+**Schema & migrations**
+- **SQLAlchemy 2.0 (async) + Alembic.** Chose for first-class pgvector + JSONB + FastAPI integration.
+- **Pydantic v2** for API schemas, kept separate from DB models. Same library validates JSONB payloads on write.
+- **asyncpg** as driver.
 
 **Models (selected per task within the researcher agent)**
-- **Sonnet / Opus** — section snapshots, company prose, top-of-digest synthesis, on-demand follow-ups. Chose for quality on synthesis tasks where readability and nuance matter.
-- **Haiku** — per-article summaries, significance classification, pulse snapshots. Chose for cost at volume.
-- **Embeddings** — one fixed model (`text-embedding-3-small` or `voyage-3`). Chose fixed-model over flexibility to avoid silent retrieval drift.
+- **Sonnet / Opus** — deep investigation loops, pattern synthesis, prose, top-of-digest, industry reads, on-demand follow-ups. Chose for synthesis quality on high-stakes outputs.
+- **Haiku** — per-article summaries, substantiveness classification, significance classification, pulse snapshots. Chose for cost at volume.
+- **Embeddings** — one fixed model (`text-embedding-3-small` or `voyage-3`). Chose fixed-model to avoid silent retrieval drift.
 
 **Infrastructure**
-- **Always-on host** — small VPS or on cloud (GCP). Chose over laptop because research, monitoring, and scheduled pulses must survive sleep.
-- **Scheduler** — cron or APScheduler. Chose lightweight over heavy orchestrator (Airflow, Prefect).
-- **Postgres + pgvector** — single store. Chose over multi-store for one backup, one query language, joins across structured + vector + JSONB.
-- **Secrets** — env file, not committed. One config layer.
+- **Always-on host** — small VPS or home server. Required for automation continuity through rest periods.
+- **Scheduler** — cron or APScheduler. Lightweight over heavy orchestrator.
+- **Postgres + pgvector** — single store for structured, JSONB, and vector data.
+- **Cache** — Postgres-backed at v1 (one less moving part). Switch to Redis only if measured throughput demands it.
+- **Session manager** — runtime component (Python service). Owns wakeup triggers, time/token budget enforcement, mode transitions. Reports to `agent_sessions`.
+- **Secrets** — env file, not committed.
 
 **Data scaling (v1 targets)**
-- Watchlist (deep coverage): ~50–100 companies.
-- Flagged sectors: ~3–8 (sector research universe a few hundred companies per sector).
-- Broader research surface (discovered tier): potentially hundreds of companies; lightweight tracking only.
-- Pulse set: ~7 fixed core instruments + ~4–8 user mega-caps.
+- Watchlist: ~20–50 companies.
+- Critical industries: ~8–15.
+- `industry_critical` + `discovered` surface: potentially hundreds of companies; lightweight tracking.
+- Pulse set: ~7 fixed core + ~4–8 user mega-caps.
 - News events ingested: ~50–500/day across all coverage.
+- Signal-to-noise ratio at ingest: tune empirically; expect significant noise filtering initially.
+- Active threads: ≤3 at any time.
+- Deep sessions: ~1–2/day typical, more on hot weeks.
+- Daily token budget: user-set; start conservative and adjust.
 - Reading-list runs: 1/day. Pulse runs: 3/day scheduled + on-demand.
-- Score rows: ~10–20k/year (watchlist × daily). Prose rows: ~200–500/year (sparse by design).
-- Embeddings: well under 1 GB total.
+- Embeddings: well under 1 GB at v1 scale.
 - Revisit infrastructure when any of these grow 10×.
 
 **Complexity level**
-- v1 is personal-scale, single-user, batch-only.
-- Deferred until measured need: streaming, multi-user, raw-text RAG, open agent planning, sub-second feeds, on-demand-pulse via message reply, mobile-native push.
+- v1: single user, single agent (two modes), batch automation + bounded deep sessions, human-in-the-loop at session boundaries.
+- Deferred until measured need: multi-agent (role-distinct), streaming, raw-text RAG over full transcripts, auto-pilot (no human check-ins), sub-second feeds, on-demand pulse via message reply, mobile-native push.
 - Add complexity only when current behavior measurably fails.

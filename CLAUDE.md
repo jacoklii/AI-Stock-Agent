@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-`ARCHITECTURE.md` describes the system; **`STRUCTURE.md` describes where code lives** — follow it.
+`ARCHITECTURE.md` describes the system, and where the code should live and be organized must reflect the architecture — follow it.
 The **data layer**, the **tools/triggers/stops**, the **workflow pipelines (as skeletons)**, and the
 **FastAPI internal API** are built: `app/db/`, `app/tools/`, `app/providers/` (yFinance + Voyage),
 `app/scheduler/`, `app/workflows/` (runtime + concurrency + triggers + 8 pipeline skeletons +

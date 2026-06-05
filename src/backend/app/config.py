@@ -36,10 +36,38 @@ class Settings(BaseSettings):
     embedding_dim: int = 1024
     voyage_api_key: str | None = None
 
+    # LLM (Anthropic). The model NAME is recorded on every analysis row, so a swap is
+    # detectable. The agent picks a model per task from the constants below; this key is the
+    # single credential the transport wrapper reads.
+    anthropic_api_key: str | None = None
+
+    # News provider (Finnhub). Free-tier REST; depth-driven coverage.
+    finnhub_api_key: str | None = None
+
+    # Notifier. Email via SMTP; the brief pulse goes to iMessage (AppleScript on the host) or
+    # WhatsApp. Addresses default to UserPreferences.channels; these are the transport creds.
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_user: str | None = None
+    smtp_password: str | None = None
+    smtp_from: str | None = None
+
+    # Bound on the agent's per-task tool-use loop — a hard stop on autonomous tool calls.
+    agent_max_tool_iters: int = 8
+
 
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+
+
+# --- Model selection (per researcher task) ------------------------------------
+# Default to the latest Claude models. Synthesis (prose, snapshots, follow-ups) uses
+# Opus/Sonnet for quality; high-volume ingest tasks (summary, significance, pulse) use Haiku
+# for cost. The agent's TaskSpec maps each task to one of these.
+MODEL_OPUS = "claude-opus-4-8"
+MODEL_SONNET = "claude-sonnet-4-6"
+MODEL_HAIKU = "claude-haiku-4-5-20251001"
 
 
 # --- Fixed constants ----------------------------------------------------------

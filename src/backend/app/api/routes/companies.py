@@ -5,9 +5,12 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from sqlalchemy import select
+
 from app.api.deps import ro_session, rw_session
 from app.api.schemas import ArticleOut, CompanyDetail, ProseOut, ScoreOut, WatchlistUpdate
-from app.db.enums import ProseKind
+from app.db.enums import CoverageTier, ProseKind
+from app.db.models.companies import Company, WatchlistMetadata
 from app.tools.analysis import get_latest_prose, get_latest_scores
 from app.tools.research import get_company, get_news_events
 
@@ -67,5 +70,40 @@ async def company_detail(
 @router.post("/companies/{company_id}/watchlist")
 async def update_watchlist(
     company_id: int, body: WatchlistUpdate, session: AsyncSession = Depends(rw_session)
-) -> None:
-    raise HTTPException(status_code=501, detail="promote/demote write path pending")
+) -> dict:
+    """Promote a company to the watchlist (deep coverage) or demote it back to discovered.
+
+    Promotion couples the tier change with the per-stock watchlist metadata — the same user
+    action, one transaction. Demotion drops the tier; the metadata row is left for history.
+    """
+    company = (
+        await session.execute(select(Company).where(Company.id == company_id))
+    ).scalar_one_or_none()
+    if company is None:
+        raise HTTPException(status_code=404, detail="company not found")
+
+    if body.action == "promote":
+        company.coverage_tier = CoverageTier.watchlist
+        meta = (
+            await session.execute(
+                select(WatchlistMetadata).where(WatchlistMetadata.company_id == company_id)
+            )
+        ).scalar_one_or_none()
+        if meta is None:
+            session.add(
+                WatchlistMetadata(
+                    company_id=company_id,
+                    why_added=body.why_added,
+                    why_relevant=body.why_relevant,
+                )
+            )
+        else:
+            if body.why_added is not None:
+                meta.why_added = body.why_added
+            if body.why_relevant is not None:
+                meta.why_relevant = body.why_relevant
+    else:  # demote
+        company.coverage_tier = CoverageTier.discovered
+
+    await session.commit()
+    return {"company_id": company_id, "coverage_tier": company.coverage_tier.value}

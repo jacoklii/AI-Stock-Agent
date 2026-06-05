@@ -128,6 +128,8 @@ class InboxItem(BaseModel):
     template: str | None
     ref_type: str | None
     ref_id: int | None
+    read_at: datetime | None = None
+    dismissed_at: datetime | None = None
 
 
 # --- Preferences -------------------------------------------------------------

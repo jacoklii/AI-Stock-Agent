@@ -1,37 +1,46 @@
 """On-demand research pipeline — answer a scoped follow-up from stored research first.
 
-Invoked by the interface (a follow-up scoped to a company, sector, or theme). Answers from
-stored research when it's present and fresh; only fetches externally when something is missing
-or stale. The synthesized answer is returned to the caller (not persisted).
-
-Skeleton status: gathering stored research and the sufficiency check are real; the fresh fetch
-(news) and the answer synthesis (agent) are deferred.
+Invoked by the interface (a follow-up scoped to a company, sector, or theme). Answers from stored
+research when it's present; only fetches externally when stored coverage is insufficient. The
+researcher synthesizes the answer, which is returned to the caller (not persisted).
 """
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
+from app.agents.researcher import get_researcher
 from app.db.enums import ProseKind
 from app.db.session import readonly_session
 from app.providers.embeddings import get_embeddings_provider
-from app.tools.analysis import get_latest_prose
+from app.providers.news import get_news_provider
+from app.tools.registry import TASK_FOLLOWUP
 from app.tools.research import get_company, get_news_events, search_similar_events
+from app.tools.analysis import get_latest_prose
 from app.workflows.runtime import run_job
 from app.workflows.triggers import WF_ON_DEMAND
 
 
 def _is_sufficient(context: dict) -> bool:
-    """Whether stored research can answer without an external fetch. — real (simple heuristic)."""
+    """Whether stored research can answer without an external fetch. — simple heuristic."""
     return bool(context.get("news") or context.get("similar"))
 
 
-async def _fetch_fresh(query: str, company_id: int | None) -> None:
-    """Pull fresh external research when stored coverage is missing/stale."""
-    raise NotImplementedError("TODO(news): on-demand fresh fetch")
+async def _fetch_fresh(company_ticker: str | None) -> list:
+    """Pull fresh external research when stored coverage is missing/stale (not persisted here)."""
+    if not company_ticker:
+        return []
+    since = datetime.now(timezone.utc) - timedelta(days=7)
+    items = await get_news_provider().fetch_events([company_ticker], since=since)
+    return items
 
 
 async def _synthesize(query: str, context: dict) -> dict:
     """Researcher answers the scoped follow-up from the gathered context."""
-    raise NotImplementedError("TODO(agent): followup synthesis")
+    out = await get_researcher().run_task(
+        TASK_FOLLOWUP, inputs={"query": query, **context}
+    )
+    return {"answer": out.answer, "sources": out.sources}
 
 
 async def run(*, query: str, company_id: int | None = None, sector_id: int | None = None) -> dict:
@@ -39,10 +48,11 @@ async def run(*, query: str, company_id: int | None = None, sector_id: int | Non
     async with run_job(
         WF_ON_DEMAND, params={"query": query, "company_id": company_id, "sector_id": sector_id}
     ) as job:
-        # 1. Gather stored research. — real
+        # 1. Gather stored research. — read tools
         async with readonly_session() as session:
+            company = await get_company(session, company_id=company_id) if company_id else None
             context: dict = {
-                "company": await get_company(session, company_id=company_id) if company_id else None,
+                "company": company,
                 "news": await get_news_events(session, company_id=company_id, limit=30),
                 "similar": await search_similar_events(session, embeddings, query_text=query, k=10),
                 "prose": await get_latest_prose(session, company_id=company_id, kind=ProseKind.fundamental)
@@ -50,12 +60,12 @@ async def run(*, query: str, company_id: int | None = None, sector_id: int | Non
                 else None,
             }
 
-        # 2. Fetch fresh only if stored research is insufficient. — TODO(news)
+        # 2. Fetch fresh only if stored research is insufficient. — Finnhub
         if not _is_sufficient(context):
-            await _fetch_fresh(query, company_id)
+            context["fresh"] = await _fetch_fresh(company.ticker if company else None)
             job.count("fresh_fetch")
 
-        # 3. Synthesize the answer. — TODO(agent)
+        # 3. Synthesize the answer. — researcher
         answer = await _synthesize(query, context)
         job.message("answered")
         return answer

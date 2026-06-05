@@ -1,12 +1,9 @@
 """Sector research pipeline — roll up sector state, surface movers, feed the digest.
 
 Runs for flagged sectors (``user_preferences.interested_sectors``). Aggregates score/breadth/
-sentiment, identifies movers, and surfaces notable activity; the rolled-up state is written to
-``sector_aggregate`` and the section snapshot feeds the daily digest.
-
-Skeleton status: sector resolution, the sentiment roll-up, and the ``sector_aggregate`` write
-are real; the section snapshot prose (agent) is deferred. Breadth/ETF price are left for the
-scoring pass to populate.
+sentiment (deterministic), and the researcher writes each sector's section snapshot. The rolled-up
+state is written to ``sector_aggregate``; the section snapshots are **returned** so the daily
+digest reuses them directly (no orphan LLM calls, no cross-run storage needed).
 """
 
 from __future__ import annotations
@@ -15,10 +12,13 @@ from datetime import datetime, timezone
 
 from sqlalchemy import func, select
 
+from app.agents.researcher import get_researcher
 from app.db.models.companies import Industry, Sector
 from app.db.models.news import NewsEvent, SectorAggregate
 from app.db.models.user import UserPreferences
+from app.db.payloads import DigestSection
 from app.db.session import SessionLocal, readonly_session
+from app.tools.registry import TASK_SECTION_SNAPSHOT
 from app.workflows.runtime import run_job
 from app.workflows.triggers import WF_SECTOR_RESEARCH
 
@@ -34,7 +34,7 @@ async def _resolve_flagged_sectors(session) -> list[Sector]:
 
 
 async def _rolled_sentiment(session, sector_id: int) -> float | None:
-    """Mean news sentiment across the sector's industries (deterministic roll-up). — real"""
+    """Mean news sentiment across the sector's industries (deterministic roll-up)."""
     stmt = (
         select(func.avg(NewsEvent.sentiment_score))
         .join(Industry, Industry.id == NewsEvent.industry_id)
@@ -45,12 +45,23 @@ async def _rolled_sentiment(session, sector_id: int) -> float | None:
     return float(value) if value is not None else None
 
 
-async def _generate_section_snapshot(sector: Sector, rolled_sentiment: float | None) -> str:
-    """Researcher writes the sector section snapshot for the digest."""
-    raise NotImplementedError("TODO(agent): section_snapshot")
+async def _generate_section(sector: Sector, rolled_sentiment: float | None) -> DigestSection:
+    """Researcher writes the sector's digest section (snapshot + key tickers)."""
+    out = await get_researcher().run_task(
+        TASK_SECTION_SNAPSHOT,
+        inputs={
+            "sector": {"id": sector.id, "key": sector.key, "name": sector.name},
+            "rolled_sentiment": rolled_sentiment,
+        },
+    )
+    return DigestSection(
+        section_title=sector.name,
+        snapshot=out.snapshot,
+        key_tickers=out.key_tickers,
+    )
 
 
-async def run() -> None:
+async def run() -> list[DigestSection]:
     today = datetime.now(timezone.utc).date()
     async with run_job(WF_SECTOR_RESEARCH) as job:
         async with readonly_session() as session:
@@ -58,7 +69,7 @@ async def run() -> None:
             rollups = {s.id: await _rolled_sentiment(session, s.id) for s in sectors}
         job.count("sectors", len(sectors))
 
-        # 1. Persist the rolled-up sector state. — real write
+        # 1. Persist the rolled-up sector state. — write
         async with SessionLocal() as session:
             for sector in sectors:
                 session.add(
@@ -70,6 +81,7 @@ async def run() -> None:
                 )
             await session.commit()
 
-        # 2. Section snapshots for the digest. — TODO(agent)
-        for sector in sectors:
-            await _generate_section_snapshot(sector, rollups[sector.id])
+        # 2. Section snapshots for the digest. — researcher (returned, not stored)
+        sections = [await _generate_section(s, rollups[s.id]) for s in sectors]
+        job.count("sections", len(sections))
+        return sections

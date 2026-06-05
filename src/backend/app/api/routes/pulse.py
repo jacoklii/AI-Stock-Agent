@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,6 +11,7 @@ from app.api.schemas import PulseInstrumentOut, PulseRunOut, PulseStateOut
 from app.db.models.delivery import PulseRun
 from app.providers.market import get_market_provider
 from app.tools.research import get_pulse_state
+from app.workflows import market_pulse
 
 router = APIRouter(tags=["pulse"])
 
@@ -40,6 +41,9 @@ async def pulse_latest(session: AsyncSession = Depends(ro_session)) -> PulseRunO
     )
 
 
-@router.post("/pulse/run")
-async def run_pulse() -> None:
-    raise HTTPException(status_code=501, detail="pending market_pulse workflow")
+@router.post("/pulse/run", status_code=status.HTTP_202_ACCEPTED)
+async def run_pulse(background: BackgroundTasks) -> dict:
+    """Trigger an on-demand market pulse. The workflow runs in the background (fetch + snapshot +
+    deliver); poll ``GET /pulse/latest`` for the result."""
+    background.add_task(market_pulse.run, slot="on_demand")
+    return {"status": "accepted", "workflow": "market_pulse", "slot": "on_demand"}

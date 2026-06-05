@@ -11,10 +11,10 @@ and the shift check are real; the score computation (``analysis/``) is deferred.
 
 from __future__ import annotations
 
+from app.analysis import ScoreResult, score_fundamental, score_sentiment
 from app.config import DEFAULT_THRESHOLDS
 from app.db.enums import CoverageTier, ProseKind
 from app.db.models.analysis import FundamentalScore, SentimentalScore
-from app.db.payloads import ScoreComponents
 from app.db.session import SessionLocal, readonly_session
 from app.tools.analysis import get_latest_scores
 from app.tools.research import ScreenFilters, get_financials, get_news_events, get_price_history, screen_stocks
@@ -22,14 +22,14 @@ from app.workflows.concurrency import company_lock, gather_bounded
 from app.workflows.runtime import run_job
 from app.workflows.triggers import WF_RESCORE
 
-_RUBRIC_VERSION = "v0"  # TODO(scoring): real rubric version from analysis/
-
 _SCORE_MODEL = {ProseKind.fundamental: FundamentalScore, ProseKind.sentimental: SentimentalScore}
 
 
-async def _compute_score(kind: ProseKind, inputs: dict) -> tuple[float, ScoreComponents, str]:
-    """Deterministic score (0-100) + sub-component map + producing model name."""
-    raise NotImplementedError(f"TODO(scoring): {kind.value} score from analysis/")
+async def _compute_score(kind: ProseKind, inputs: dict) -> ScoreResult:
+    """Deterministic score (0-100) + sub-components + rubric/engine, from ``analysis/``."""
+    if kind is ProseKind.fundamental:
+        return score_fundamental(inputs["financials"], inputs["prices"])
+    return score_sentiment(inputs["news"])
 
 
 async def _resolve_targets(company_ids: list[int] | None) -> list[int]:
@@ -53,17 +53,17 @@ async def _rescore_one(company_id: int) -> None:
                 "prior": await get_latest_scores(session, company_id=company_id),
             }
 
-        # 2. Compute both scores. — TODO(scoring)
+        # 2. Compute both scores. — analysis/
         rows = []
         for kind in (ProseKind.fundamental, ProseKind.sentimental):
-            score, components, model_name = await _compute_score(kind, inputs)
+            result = await _compute_score(kind, inputs)
             rows.append(
                 _SCORE_MODEL[kind](
                     company_id=company_id,
-                    score=score,
-                    components=components,
-                    rubric_version=_RUBRIC_VERSION,
-                    model_name=model_name,
+                    score=result.score,
+                    components=result.components,
+                    rubric_version=result.rubric_version,
+                    model_name=result.engine,  # deterministic producer, recorded for provenance
                 )
             )
 

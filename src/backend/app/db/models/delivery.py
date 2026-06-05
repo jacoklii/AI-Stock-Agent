@@ -71,3 +71,6 @@ class NotificationHistory(Base, TimestampMixin):
     ref_type: Mapped[str | None] = mapped_column(String(32), nullable=True)  # e.g. 'news_event'
     ref_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     dedupe_key: Mapped[str] = mapped_column(String(256), unique=True)
+    # In-app inbox state — set when the user reads/dismisses the mirrored item. Null = unread/active.
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    dismissed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

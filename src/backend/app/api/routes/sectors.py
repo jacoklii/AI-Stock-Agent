@@ -10,6 +10,7 @@ from app.api.deps import ro_session, rw_session
 from app.api.schemas import ArticleOut, SectorAggregateOut, SectorFlagUpdate, SectorView
 from app.db.models.companies import Industry, Sector
 from app.db.models.news import NewsEvent, SectorAggregate
+from app.db.models.user import UserPreferences
 
 router = APIRouter(tags=["sectors"])
 
@@ -77,5 +78,25 @@ async def sector_view(
 @router.post("/sectors/{sector_id}/flag")
 async def flag_sector(
     sector_id: int, body: SectorFlagUpdate, session: AsyncSession = Depends(rw_session)
-) -> None:
-    raise HTTPException(status_code=501, detail="sector flag write path pending")
+) -> dict:
+    """Flag/unflag a sector for deep research by editing ``interested_sectors`` (taxonomy keys)."""
+    sector = (
+        await session.execute(select(Sector).where(Sector.id == sector_id))
+    ).scalar_one_or_none()
+    if sector is None:
+        raise HTTPException(status_code=404, detail="sector not found")
+
+    prefs = (
+        await session.execute(select(UserPreferences).where(UserPreferences.id == 1))
+    ).scalar_one_or_none()
+    if prefs is None:
+        raise HTTPException(status_code=404, detail="preferences not initialized")
+
+    flagged = set(prefs.interested_sectors)
+    if body.flagged:
+        flagged.add(sector.key)
+    else:
+        flagged.discard(sector.key)
+    prefs.interested_sectors = sorted(flagged)  # reassign so the ARRAY change is tracked
+    await session.commit()
+    return {"sector_id": sector_id, "flagged": body.flagged, "interested_sectors": list(prefs.interested_sectors)}
