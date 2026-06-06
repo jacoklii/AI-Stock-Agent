@@ -98,7 +98,7 @@ Alembic lives at `app/db/migrations/` (`alembic.ini` at `src/backend/`).
 
 ## What this is
 
-A single-user, always-on **knowledge-layer** agent for stock/market research. It researches, analyzes, and proactively surfaces what the user should read — organized by sector and significance. It does **not** trade, and the design draws a hard line between AI work and human work.
+A single-user, always-on **knowledge-layer** agent for stock/market research. It researches, analyzes, and proactively surfaces what the user should read — organized by sector and significance. It does **not** trade, and the design draws a hard line between AI work and human work. But rather finds data, connect the dots for insights
 
 ## Inviolable constraints
 
@@ -135,3 +135,5 @@ Four layers (detail in `ARCHITECTURE.md`):
 ## Safety note
 
 This is a knowledge layer with no trade execution. Keep it that way: any feature that would emit a recommendation, a buy/sell/hold, or a valuation call is out of scope by design, not a missing feature.
+
+- Add complexity only when current behavior measurably fails.

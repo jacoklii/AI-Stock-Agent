@@ -1,13 +1,13 @@
 # DESIGN
 
 ## GOAL
-Create an agentic AI system that's my research partner and research analyst. It does the deep research I can't do alone — across industries, supply chains, futures (AI, quantum, aerospace, finance), macro and geopolitics — surfaces what genuinely matters, filters noise, and points me at patterns with data. It never decides for me.
+Create an agentic AI system that's my research partner and analyst. It does the deep research I can't do alone — across industries, supply chains, futures (AI, quantum, aerospace, finance), macro and geopolitics — surfaces what genuinely matters, filters noise, and points me at patterns with data. It never decides for me.
 
 ### AI-Specific
 Repetitive workflows, signal-filtering, pattern recognition, and timely tasks belong to the AI. It runs in **shifts**: bounded deep-research sessions where it pursues investigations, interleaved with **rest periods** where automated breadth coverage continues. When automation surfaces something substantive, the agent can be called into a session.
 
 ### Human-Specific
-Complex reasoning, judgement, speculation, valuation, and decisions stay with me. I direct what gets investigated, redirect threads, decide what to act on, and catch what the AI got wrong. The agent never recommends buy/sell/hold and never makes valuation calls.
+Complex reasoning, judgement, speculation, valuation, and decisions stay with me. I direct what gets investigated, redirect threads, decide what to act on, and catch what the AI got wrong. The agent never recommends buy/sell/hold and never makes the final valuation calls, only predicts it.
 
 ## The 3 Aspects
 
@@ -25,14 +25,13 @@ Complex reasoning, judgement, speculation, valuation, and decisions stay with me
 
 **Functional**
 - Three-layer coverage: **global movement** (macro/supply chain/geopolitics, filtered for substantiveness), **critical industries + sectors** (curated set, ongoing reads), **watchlist** (close coverage, mostly user-chosen).
-- Two operating modes: **breadth** (automated, restricted tools, single-step outputs) and **deep** (autonomous, expanded tools, multi-step investigation loops).
-- Substantive-signal classification at ingest separates signal from noise; noise is tagged and shelved, not dropped.
+- Two operating modes: **breadth** (automated, restricted tools, single-step outputs) and **depth** (autonomous, expanded tools, multi-step investigation loops).
 - Investigation threads as the agent's working memory — topic, open questions, accumulated findings, status.
 - Chat is the primary direction interface — start, redirect, pause, or kill threads; get briefings; adjust budget.
 - Pattern synthesis with a strict output shape: three or more independent substantive inputs, shown with data and reasoning.
 - Active sessions are bounded (wall-clock + token budget); automation runs continuously through rest periods.
 - Two delivery shapes: **brief pulse** (iMessage/WhatsApp + platform) and **detailed digest** (email + platform).
-- Article URLs are primary; AI summaries are orientation alongside. Every output cites sources.
+- Article URLs are primary; AI summaries are orientation alongside. Every output cites the key sources used.
 
 **Non-functional**
 - Single user.
@@ -47,10 +46,9 @@ Complex reasoning, judgement, speculation, valuation, and decisions stay with me
 
 **Hard**
 - AI never recommends buy/sell/hold or makes valuation calls.
-- "Look at this" outputs require **three or more independent substantive inputs**, each shown with data and reasoning. No vibes, no single-source claims.
+- "Look at this" outputs require **three or more independent substantive inputs**, each shown with data and reasoning. No single-source claims.
 - AI **reads freely** through breadth tools, deep-mode tools, and MCP. AI **writes only through specific paths**; no raw SQL against production data, no arbitrary state changes.
 - Every prose, finding, and pattern row stores source IDs.
-- Noise is **tagged and shelved** in `noise_audit`, never silently deleted.
 - Cache holds fetched content with TTL; persistent storage holds **summaries and key findings only** — never whole transcripts or article bodies.
 - Embedding model is fixed; changes are explicit backfills.
 - `company_id` for joins, never ticker.
@@ -64,23 +62,21 @@ Complex reasoning, judgement, speculation, valuation, and decisions stay with me
 - Cache-first on web tool calls; bypass only when explicitly told or when accuracy demands freshness.
 - Findings-first on deep research; check CAG before fetching.
 - Retention: news events 90d / 2y / indefinite by significance; threads retained while active + 90d after close; key findings extracted to permanent store before thread closes.
-- Sparse prose, dense scores.
 - One agent until role divergence emerges.
 - New external dependency behind a wrapper before first use.
 
 ## Change & Separation
 
 - External APIs behind internal wrappers — provider swap touches one file.
-- Prompts in versioned `prompts/`, separate from schema migrations.
-- Scoring rubrics versioned (`rubric_version` on score rows).
+- Prompts in versioned `app/[agent role]/prompts/`, separate from schema migrations.
 - Embedding model name stored alongside every vector; LLM model name on every analysis row.
 - Daily prices / quarterly financials / ad-hoc news / sparse prose — separate tables, separate cadences.
 - **Research surface vs. deep coverage are separate concepts.** Coverage tier on `companies` lives in one column; deep coverage is a property of where the agent is currently investigating, not a permanent label.
-- **Breadth automation vs. deep research are separate modes.** Same agent, different tool allowlist and execution model.
+- **automation vs. deep research are separate modes.** Same agent, different tool allowlist and execution model.
 - **Substantiveness vs. significance are separate filters.** Substantiveness gates ingestion ("is this signal or noise?"); significance ranks what survives ("how big a deal is this?").
 - **Cache vs. persistent storage are separate.** Cache holds full fetched content with TTL; persistent stores only summaries and findings. Promotion from cache to persistent is explicit.
 - **Thread state (working memory) vs. analysis state (durable record) are separate.** Threads are mutable and short-lived; analysis is append-only and long-lived.
-- **Brief pulse vs. detailed digest are separate delivery shapes** with separate templates and triggers.
+- **Brief pulse vs. detailed digest** are separate, with different templates and triggers.
 - Agents specialize by role, not by task. Multiple prompts within one agent are fine; multiple agents for one role is overhead.
 - When a task grows beyond a single LLM call — needing intermediate state, multiple decisions, branching — it has become a workflow. Specialized agents are added only when role-distinct from `researcher`.
 - UI talks only to FastAPI, never directly to Postgres.
@@ -118,15 +114,15 @@ Read-mostly with one major exception: the chat panel is a direction surface. Art
 
 **Notifications**
 - **Email** — detailed digest. Starts with top snapshot, then sections by industry / sector / macro. Each section has its snapshot + article URLs with brief summaries underneath.
-- **iMessage / WhatsApp** — brief pulse. Pulse-set state + short market-movement snapshot.
+- **iMessage / WhatsApp** — brief update. State + short market-movement snapshot.
 - **In-app inbox** — mirrors what was sent on either channel.
 - TypeScript: Chose for typed UI, shareable schemas with FastAPI.
 
-**Freshness** — every score, prose, article, pattern, and pulse shows its `generated_at` / `data_through`. Stale data must look stale.
+**Freshness** — every score, update, article, pattern, and pulse shows its `generated_at` / `data_through`. Stale data must look stale.
 
 ### 2. Application Layer
 
-Two operating modes, one agent. Breadth is orchestrated and predictable; deep is autonomous within bounded sessions.
+Two operating modes, one research agent. Breadth is orchestrated and predictable; deep is autonomous within bounded sessions.
 
 **Operating modes**
 - **Breadth mode** — called inside automation pipelines. Restricted tool allowlist. Single-step structured outputs. Predictable cost. Runs continuously.
@@ -285,9 +281,9 @@ Embedding model is fixed and stored alongside every vector.
 - **Secrets** — env file, not committed.
 
 **Data scaling (v1 targets)**
-- Watchlist: ~20–50 companies.
+- Watchlist: ~50–100 companies.
 - Critical industries: ~8–15.
-- `industry_critical` + `discovered` surface: potentially hundreds of companies; lightweight tracking.
+- `industry` + `discovered` surface: potentially hundreds of companies; lightweight tracking.
 - Pulse set: ~7 fixed core + ~4–8 user mega-caps.
 - News events ingested: ~50–500/day across all coverage.
 - Signal-to-noise ratio at ingest: tune empirically; expect significant noise filtering initially.
@@ -301,4 +297,3 @@ Embedding model is fixed and stored alongside every vector.
 **Complexity level**
 - v1: single user, single agent (two modes), batch automation + bounded deep sessions, human-in-the-loop at session boundaries.
 - Deferred until measured need: multi-agent (role-distinct), streaming, raw-text RAG over full transcripts, auto-pilot (no human check-ins), sub-second feeds, on-demand pulse via message reply, mobile-native push.
-- Add complexity only when current behavior measurably fails.
