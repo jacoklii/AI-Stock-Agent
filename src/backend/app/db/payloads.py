@@ -34,7 +34,7 @@ class UserChannels(BaseModel):
     imessage: str | None = None
     whatsapp: str | None = None
     digest_channels: list[str] = Field(default_factory=lambda: ["email", "in_app"])
-    pulse_channels: list[str] = Field(default_factory=lambda: ["imessage", "in_app"])
+    brief_channels: list[str] = Field(default_factory=lambda: ["imessage", "in_app"])
 
 
 class QuietHours(BaseModel):
@@ -50,7 +50,7 @@ class CalendarPayload(BaseModel):
 
     model_config = ConfigDict(extra="allow")
 
-    amount: float | None = None  # e.g. dividend amount
+    amount: float | None = None
     estimate_eps: float | None = None
     note: str | None = None
 
@@ -58,51 +58,81 @@ class CalendarPayload(BaseModel):
 # --- Analysis -----------------------------------------------------------------
 
 
-class ScoreComponents(RootModel[dict[str, float]]):
-    """Rubric-specific sub-scores as a flat name->value map. The concrete dimensions
+class ScorePayload(RootModel[dict[str, float]]):
+    """Rubric-specific sub-scores as a flat dimension→value map. The concrete dimensions
     live in versioned prompts (carried by ``rubric_version`` on the row), so the schema
     stays stable as rubrics evolve."""
 
 
-# --- Delivery -----------------------------------------------------------------
+class AnalysisContent(BaseModel):
+    """Content of a broader analysis row (sector, industry, macro, supply-chain, or stock
+    summary). Shape is intentionally open — the ``type`` column on ``analysis`` is the
+    discriminator; prompts define the actual keys."""
+
+    model_config = ConfigDict(extra="allow")
 
 
-class ArticleRef(BaseModel):
-    """A reference into ``news_events`` — the digest never duplicates article content."""
+class AnalysisSupportingInputs(BaseModel):
+    """Source provenance for an analysis row — replaces the old citations table."""
 
-    news_event_id: int
-    rank: int | None = None
-
-
-class DigestSection(BaseModel):
-    section_title: str
-    snapshot: str
-    article_refs: list[ArticleRef] = Field(default_factory=list)
-    key_tickers: list[str] = Field(default_factory=list)  # 1-5 key stocks to watch
+    news_event_ids: list[int] = Field(default_factory=list)
+    source_refs: list[str] = Field(default_factory=list)
 
 
-class PulseInstrument(BaseModel):
-    symbol: str  # yFinance ticker symbol
-    label: str | None = None
-    price: float | None = None
-    change: float | None = None
-    change_pct: float | None = None
+# --- Research state -----------------------------------------------------------
 
 
-# --- Jobs ---------------------------------------------------------------------
+class StateSources(BaseModel):
+    """Sources consulted during a research session."""
+
+    source_ids: list[int] = Field(default_factory=list)
+    urls: list[str] = Field(default_factory=list)
 
 
-class JobParams(BaseModel):
-    """Job-type-specific inputs. Queryable fields are columns on ``jobs``; the variable
+class StateTask(BaseModel):
+    """Summary of one task the agent completed or abandoned within a session."""
+
+    model_config = ConfigDict(extra="allow")
+
+    type: str
+    status: str
+    summary: str | None = None
+
+
+class StateTaskList(RootModel[list[StateTask]]):
+    """Ordered list of tasks (previous/finished) stored on the state row."""
+
+
+# --- Tasks --------------------------------------------------------------------
+
+
+class TaskParams(BaseModel):
+    """Task-type-specific inputs. Queryable fields are columns on ``tasks``; variable
     inputs live here."""
 
     model_config = ConfigDict(extra="allow")
 
 
-class JobResult(BaseModel):
-    """Job-type-specific outputs / summary counts."""
+class TaskResult(BaseModel):
+    """Task-type-specific outputs / summary counts."""
 
     model_config = ConfigDict(extra="allow")
 
     counts: dict[str, int] = Field(default_factory=dict)
     message: str | None = None
+
+
+# --- Brief --------------------------------------------------------------------
+# NOTE: BriefInstrument is no longer a JSONB persistence payload — the brief_runs table was
+# removed (the brief is regenerated live from quotes, never stored). It survives only as the
+# result shape of the get_brief_state tool + API wire schema. Relocate it to
+# tools/tool_schema.py when the tools layer is reworked; kept here for now so the (deferred)
+# tools layer stays importable without changes.
+
+
+class BriefInstrument(BaseModel):
+    symbol: str
+    label: str | None = None
+    price: float | None = None
+    change: float | None = None
+    change_pct: float | None = None

@@ -1,49 +1,37 @@
-"""Market pulse view + on-demand trigger."""
+"""Market brief view + on-demand trigger.
+
+The brief is transient (ARCHITECTURE.md): it is regenerated live from quotes and never persisted,
+so there is no ``/brief/latest``. ``GET /brief/state`` returns live quotes for the brief set; the
+on-demand ``POST /brief/run`` trigger is deferred until the brief workflow lands.
+"""
 
 from __future__ import annotations
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import ro_session
-from app.api.schemas import PulseInstrumentOut, PulseRunOut, PulseStateOut
-from app.db.models.delivery import PulseRun
+from app.api.schemas import BriefInstrumentOut, BriefStateOut
 from app.providers.market import get_market_provider
-from app.tools.research import get_pulse_state
-from app.workflows import market_pulse
+from app.tools.research import get_brief_state
 
-router = APIRouter(tags=["pulse"])
+router = APIRouter(tags=["brief"])
 
 
-@router.get("/pulse/state", response_model=PulseStateOut)
-async def pulse_state(session: AsyncSession = Depends(ro_session)) -> PulseStateOut:
-    """Live quotes for the pulse set (fixed core + user mega-caps)."""
-    instruments = await get_pulse_state(session, get_market_provider())
-    return PulseStateOut(
-        instruments=[PulseInstrumentOut.model_validate(i.model_dump()) for i in instruments]
+@router.get("/brief/state", response_model=BriefStateOut)
+async def brief_state(session: AsyncSession = Depends(ro_session)) -> BriefStateOut:
+    """Live quotes for the brief set (fixed core + user mega-caps)."""
+    instruments = await get_brief_state(session, get_market_provider())
+    return BriefStateOut(
+        instruments=[BriefInstrumentOut.model_validate(i.model_dump()) for i in instruments]
     )
 
 
-@router.get("/pulse/latest", response_model=PulseRunOut)
-async def pulse_latest(session: AsyncSession = Depends(ro_session)) -> PulseRunOut:
-    row = (
-        await session.execute(select(PulseRun).order_by(PulseRun.generated_at.desc()).limit(1))
-    ).scalar_one_or_none()
-    if row is None:
-        raise HTTPException(status_code=404, detail="no pulse has been generated yet")
-    return PulseRunOut(
-        id=row.id,
-        slot=row.slot.value,
-        generated_at=row.generated_at,
-        pulse_snapshot=row.pulse_snapshot,
-        instruments=[PulseInstrumentOut.model_validate(i.model_dump()) for i in row.instruments],
+@router.post("/brief/run")
+async def run_brief() -> dict:
+    """On-demand market brief trigger. Deferred — the brief workflow is not implemented yet;
+    the brief is otherwise regenerated live via ``GET /brief/state``."""
+    raise HTTPException(
+        status_code=status.HTTP_501_NOT_IMPLEMENTED,
+        detail="brief workflow not implemented yet",
     )
-
-
-@router.post("/pulse/run", status_code=status.HTTP_202_ACCEPTED)
-async def run_pulse(background: BackgroundTasks) -> dict:
-    """Trigger an on-demand market pulse. The workflow runs in the background (fetch + snapshot +
-    deliver); poll ``GET /pulse/latest`` for the result."""
-    background.add_task(market_pulse.run, slot="on_demand")
-    return {"status": "accepted", "workflow": "market_pulse", "slot": "on_demand"}

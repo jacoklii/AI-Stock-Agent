@@ -7,44 +7,37 @@ updates together, never couple what doesn't" — see each module's docstring.
 
 from __future__ import annotations
 
-from app.db.models.companies import Company, Industry, Sector, WatchlistMetadata
-from app.db.models.market_data import CatalystCalendar, FinancialData, PriceHistory
-from app.db.models.news import NewsEvent, SectorAggregate
-from app.db.models.analysis import (
-    Citation,
-    FundamentalProse,
-    FundamentalScore,
-    SentimentalProse,
-    SentimentalScore,
-)
-from app.db.models.delivery import NotificationHistory, PulseRun, ReadingListRun
+from app.db.models.analysis import Analysis, Fundamental, Sentimental
+from app.db.models.cache import Cache
+from app.db.models.companies import Company, Industry
+from app.db.models.delivery import Notification
+from app.db.models.market_data import CatalystCalendar, Financial, Price
+from app.db.models.news import NewsEvent
+from app.db.models.state import ResearchState
+from app.db.models.tasks import Task
 from app.db.models.user import UserPreferences
-from app.db.models.jobs import Job
 
 __all__ = [
-    # companies + taxonomy
-    "Sector",
+    # companies + industries
     "Industry",
     "Company",
-    "WatchlistMetadata",
     # market data
-    "PriceHistory",
-    "FinancialData",
+    "Price",
+    "Financial",
     "CatalystCalendar",
     # news
     "NewsEvent",
-    "SectorAggregate",
     # analysis
-    "FundamentalScore",
-    "SentimentalScore",
-    "FundamentalProse",
-    "SentimentalProse",
-    "Citation",
+    "Fundamental",
+    "Sentimental",
+    "Analysis",
     # delivery
-    "ReadingListRun",
-    "PulseRun",
-    "NotificationHistory",
-    # user + jobs
+    "Notification",
+    # user
     "UserPreferences",
-    "Job",
+    # research state + tasks
+    "ResearchState",
+    "Task",
+    # cache
+    "Cache",
 ]

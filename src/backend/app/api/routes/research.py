@@ -1,20 +1,22 @@
-"""On-demand research — scoped follow-up answered from stored research first."""
+"""On-demand research — scoped follow-up answered from stored research first.
+
+The on-demand research pipeline is deferred (lives in ``app/workflows``), so this endpoint
+returns 501 until that workflow lands. The request contract is kept so the UI can integrate now.
+"""
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, status
 
 from app.api.schemas import FollowupRequest, FollowupResponse
-from app.workflows import on_demand
 
 router = APIRouter(tags=["research"])
 
 
 @router.post("/research/followup", response_model=FollowupResponse)
 async def followup(body: FollowupRequest) -> FollowupResponse:
-    """Answer a scoped follow-up. Runs the on-demand pipeline (stored research first, fresh fetch
-    only if needed) and returns the researcher's synthesized answer with its source event IDs."""
-    result = await on_demand.run(
-        query=body.query, company_id=body.company_id, sector_id=body.sector_id
+    """Answer a scoped follow-up via the on-demand research pipeline. Deferred — not implemented yet."""
+    raise HTTPException(
+        status_code=status.HTTP_501_NOT_IMPLEMENTED,
+        detail="on-demand research workflow not implemented yet",
     )
-    return FollowupResponse(answer=result["answer"], sources=result["sources"])

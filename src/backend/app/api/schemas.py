@@ -7,12 +7,12 @@ fields (``generated_at`` / ``data_through``) ride along so the UI can show stale
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel
 
-from app.db.enums import Channel, CoverageTier, ProseKind, SignificanceTier
+from app.db.enums import Channel, CoverageTier
 
 # --- Shared ------------------------------------------------------------------
 
@@ -24,15 +24,14 @@ class ArticleOut(BaseModel):
     published_at: datetime
     headline: str
     summary: str
-    significance_tier: SignificanceTier
-    sentiment_score: float | None
+    significance: float
     tickers: list[str]
 
 
-# --- Pulse -------------------------------------------------------------------
+# --- Brief (market brief: movers + snapshot) ---------------------------------
 
 
-class PulseInstrumentOut(BaseModel):
+class BriefInstrumentOut(BaseModel):
     symbol: str
     label: str | None
     price: float | None
@@ -40,16 +39,8 @@ class PulseInstrumentOut(BaseModel):
     change_pct: float | None
 
 
-class PulseStateOut(BaseModel):
-    instruments: list[PulseInstrumentOut]
-
-
-class PulseRunOut(BaseModel):
-    id: int
-    slot: str
-    generated_at: datetime
-    pulse_snapshot: str | None
-    instruments: list[PulseInstrumentOut]
+class BriefStateOut(BaseModel):
+    instruments: list[BriefInstrumentOut]
 
 
 # --- Digest / home -----------------------------------------------------------
@@ -74,17 +65,17 @@ class DigestView(BaseModel):
 
 
 class ScoreOut(BaseModel):
-    kind: ProseKind
+    kind: str
     score: float
     generated_at: datetime
     data_through: datetime | None
 
 
 class ProseOut(BaseModel):
-    kind: ProseKind
+    kind: str
     body: str
     generated_at: datetime
-    citation_event_ids: list[int]
+    source_event_ids: list[int]
 
 
 class CompanyDetail(BaseModel):
@@ -92,7 +83,7 @@ class CompanyDetail(BaseModel):
     ticker: str
     name: str
     coverage_tier: CoverageTier
-    sector_id: int | None
+    sector: str | None
     industry_id: int | None
     exchange: str | None
     articles: list[ArticleOut]
@@ -100,21 +91,14 @@ class CompanyDetail(BaseModel):
     prose: list[ProseOut]
 
 
-# --- Sector view -------------------------------------------------------------
+# --- Industry view -----------------------------------------------------------
 
 
-class SectorAggregateOut(BaseModel):
-    date: date
-    etf_price: float | None
-    breadth: float | None
-    rolled_sentiment: float | None
-
-
-class SectorView(BaseModel):
-    sector_id: int
+class IndustryView(BaseModel):
+    industry_id: int
     key: str
     name: str
-    aggregate: SectorAggregateOut | None
+    description: str | None
     articles: list[ArticleOut]
 
 
@@ -137,7 +121,8 @@ class InboxItem(BaseModel):
 
 class PreferencesOut(BaseModel):
     interested_sectors: list[str]
-    pulse_user: list[str]
+    brief_user: list[str]
+    critical_industries: list[int]
 
 
 # --- Action requests (handlers stubbed 501 this pass) ------------------------
@@ -145,22 +130,20 @@ class PreferencesOut(BaseModel):
 
 class WatchlistUpdate(BaseModel):
     action: Literal["promote", "demote"]
-    why_added: str | None = None
-    why_relevant: str | None = None
 
 
-class SectorFlagUpdate(BaseModel):
+class IndustryFlagUpdate(BaseModel):
     flagged: bool
 
 
-class PulseUserUpdate(BaseModel):
+class BriefUserUpdate(BaseModel):
     symbols: list[str]
 
 
 class FollowupRequest(BaseModel):
     query: str
     company_id: int | None = None
-    sector_id: int | None = None
+    industry_id: int | None = None
 
 
 class FollowupResponse(BaseModel):

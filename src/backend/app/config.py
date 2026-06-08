@@ -72,9 +72,9 @@ MODEL_HAIKU = "claude-haiku-4-5-20251001"
 
 # --- Fixed constants ----------------------------------------------------------
 
-# The fixed core of the market pulse set (user mega-caps are stored on UserPreferences).
+# The fixed core of the brief set (user mega-caps are stored on UserPreferences.brief_user).
 # Symbols are yFinance-compatible.
-PULSE_CORE: list[dict[str, str]] = [
+BRIEF_CORE: list[dict[str, str]] = [
     {"symbol": "VOO", "label": "S&P 500 (VOO)"},
     {"symbol": "DIA", "label": "Dow Jones (^DJI)"},
     {"symbol": "QQQ", "label": "Nasdaq 100 (QQQ)"},

@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import ro_session, rw_session
 from app.api.schemas import ArticleOut, CompanyDetail, ProseOut, ScoreOut, WatchlistUpdate
-from app.db.enums import CoverageTier, ProseKind
-from app.db.models.companies import Company, WatchlistMetadata
+from app.db.enums import CoverageTier
+from app.db.models.companies import Company
 from app.tools.analysis import get_latest_prose, get_latest_scores
 from app.tools.research import get_company, get_news_events
 
@@ -29,11 +28,11 @@ async def company_detail(
     latest = await get_latest_scores(session, company_id=company_id)
 
     scores: list[ScoreOut] = []
-    for row in (latest.fundamental, latest.sentimental):
+    for kind, row in (("fundamental", latest.fundamental), ("sentimental", latest.sentimental)):
         if row is not None:
             scores.append(
                 ScoreOut(
-                    kind=row.kind,
+                    kind=kind,
                     score=row.score,
                     generated_at=row.generated_at,
                     data_through=row.data_through,
@@ -41,15 +40,15 @@ async def company_detail(
             )
 
     prose: list[ProseOut] = []
-    for kind in (ProseKind.fundamental, ProseKind.sentimental):
+    for kind in ("fundamental", "sentimental"):
         row = await get_latest_prose(session, company_id=company_id, kind=kind)
         if row is not None:
             prose.append(
                 ProseOut(
-                    kind=row.kind,
+                    kind=kind,
                     body=row.body,
                     generated_at=row.generated_at,
-                    citation_event_ids=[c.news_event_id for c in row.citations if c.news_event_id],
+                    source_event_ids=[s.news_event_id for s in row.sources if s.news_event_id],
                 )
             )
 
@@ -58,7 +57,7 @@ async def company_detail(
         ticker=company.ticker,
         name=company.name,
         coverage_tier=company.coverage_tier,
-        sector_id=company.sector_id,
+        sector=company.sector,
         industry_id=company.industry_id,
         exchange=company.exchange,
         articles=[ArticleOut.model_validate(e.model_dump()) for e in news],
@@ -73,8 +72,8 @@ async def update_watchlist(
 ) -> dict:
     """Promote a company to the watchlist (deep coverage) or demote it back to discovered.
 
-    Promotion couples the tier change with the per-stock watchlist metadata — the same user
-    action, one transaction. Demotion drops the tier; the metadata row is left for history.
+    Watchlist membership is the ``coverage_tier`` column on ``companies`` — promotion/demotion is
+    a single tier flip. Per-company alert thresholds live on ``user_preferences``.
     """
     company = (
         await session.execute(select(Company).where(Company.id == company_id))
@@ -82,28 +81,8 @@ async def update_watchlist(
     if company is None:
         raise HTTPException(status_code=404, detail="company not found")
 
-    if body.action == "promote":
-        company.coverage_tier = CoverageTier.watchlist
-        meta = (
-            await session.execute(
-                select(WatchlistMetadata).where(WatchlistMetadata.company_id == company_id)
-            )
-        ).scalar_one_or_none()
-        if meta is None:
-            session.add(
-                WatchlistMetadata(
-                    company_id=company_id,
-                    why_added=body.why_added,
-                    why_relevant=body.why_relevant,
-                )
-            )
-        else:
-            if body.why_added is not None:
-                meta.why_added = body.why_added
-            if body.why_relevant is not None:
-                meta.why_relevant = body.why_relevant
-    else:  # demote
-        company.coverage_tier = CoverageTier.discovered
-
+    company.coverage_tier = (
+        CoverageTier.watchlist if body.action == "promote" else CoverageTier.discovered
+    )
     await session.commit()
     return {"company_id": company_id, "coverage_tier": company.coverage_tier.value}

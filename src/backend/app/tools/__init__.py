@@ -13,11 +13,11 @@ from app.tools.analysis import get_latest_prose, get_latest_scores, get_score_hi
 from app.tools.delivery import check_dedupe
 from app.tools.registry import REGISTRY, ToolSpec, get_tools_for, tool
 from app.tools.research import (
+    get_brief_state,
     get_company,
     get_financials,
     get_news_events,
     get_price_history,
-    get_pulse_state,
     screen_stocks,
     search_similar_events,
 )
@@ -32,7 +32,7 @@ __all__ = [
     "get_financials",
     "get_price_history",
     "get_news_events",
-    "get_pulse_state",
+    "get_brief_state",
     "screen_stocks",
     "search_similar_events",
     # analysis

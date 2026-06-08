@@ -12,8 +12,8 @@ The **data layer**, the **tools/triggers/stops**, the **workflow pipelines (as s
 boundaries): the `researcher` agent (`app/agents/`), the `analysis/` scoring math, the Finnhub news +
 notifier providers, the MCP server (`app/mcp_server/`), and the frontend.
 
-Read `ARCHITECTURE.md` and `STRUCTURE.md` in full before writing code; they are the source of truth
-and the sections below only summarize them.
+Read `ARCHITECTURE.md` in full before writing code; it is the source of truth
+and the sections below only summarize it.
 
 ## Commands (backend)
 
@@ -42,7 +42,7 @@ Alembic lives at `app/db/migrations/` (`alembic.ini` at `src/backend/`).
 ## Data layer conventions (already established)
 
 - **Coupling rule:** group/transact by write cadence — "couple what updates together, never couple
-  what doesn't." Models live in `app/db/models/` per STRUCTURE.md: `companies.py` (incl. taxonomy),
+  what doesn't." Models live in `app/db/models/`: `companies.py` (incl. taxonomy),
   `market_data.py`, `news.py` (incl. `SectorAggregate`), `analysis.py` (scores+prose), `delivery.py`
   (digest+pulse+notifications), `user.py`, `jobs.py`.
 - **DB models vs API schemas are separate** — don't reuse ORM models as response models.
