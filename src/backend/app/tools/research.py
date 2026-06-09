@@ -14,13 +14,12 @@ from datetime import date
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import PULSE_CORE
-from app.db.enums import SignificanceTier
+from app.config import BRIEF_CORE
 from app.db.models.companies import Company
-from app.db.models.market_data import FinancialData, PriceHistory
+from app.db.models.market_data import Financial, Price
 from app.db.models.news import NewsEvent
 from app.db.models.user import UserPreferences
-from app.db.payloads import PulseInstrument
+from app.db.payloads import BriefInstrument
 from app.providers.embeddings import EmbeddingsProvider
 from app.providers.market import MarketDataProvider
 from app.tools.registry import (
@@ -43,22 +42,9 @@ from app.tools.tool_schema import (
     SimilarEvent,
 )
 
-# Significance ordering for "at least this tier" filters. Closed set, defined once.
-_SIGNIFICANCE_RANK: dict[SignificanceTier, int] = {
-    SignificanceTier.routine: 0,
-    SignificanceTier.notable: 1,
-    SignificanceTier.significant: 2,
-}
-
-
-# --- Helpers ------------------------------------------------------------------
-
 
 def _f(value: object) -> float | None:
     return float(value) if value is not None else None  # type: ignore[arg-type]
-
-
-# --- Tools --------------------------------------------------------------------
 
 
 @tool(
@@ -87,7 +73,7 @@ async def get_company(
         company_id=company.id,
         ticker=company.ticker,
         name=company.name,
-        sector_id=company.sector_id,
+        sector=company.sector,
         industry_id=company.industry_id,
         exchange=company.exchange,
         coverage_tier=company.coverage_tier,
@@ -107,10 +93,10 @@ async def get_financials(
     period_type: str | None = None,
     limit: int = 8,
 ) -> list[FinancialRow]:
-    stmt = select(FinancialData).where(FinancialData.company_id == company_id)
+    stmt = select(Financial).where(Financial.company_id == company_id)
     if period_type is not None:
-        stmt = stmt.where(FinancialData.period_type == period_type)
-    stmt = stmt.order_by(FinancialData.period_end.desc()).limit(limit)
+        stmt = stmt.where(Financial.period_type == period_type)
+    stmt = stmt.order_by(Financial.period_end.desc()).limit(limit)
     rows = (await session.execute(stmt)).scalars().all()
     return [
         FinancialRow(
@@ -143,14 +129,13 @@ async def get_price_history(
     end: date | None = None,
     limit: int = 365,
 ) -> list[PriceRow]:
-    """Daily bars only. Intraday is a live, on-demand concern handled in the pulse workflow,
-    not stored and not served here."""
-    stmt = select(PriceHistory).where(PriceHistory.company_id == company_id)
+    """Daily bars only. Intraday is a live, on-demand concern handled in the brief workflow."""
+    stmt = select(Price).where(Price.company_id == company_id)
     if start is not None:
-        stmt = stmt.where(PriceHistory.date >= start)
+        stmt = stmt.where(Price.date >= start)
     if end is not None:
-        stmt = stmt.where(PriceHistory.date <= end)
-    stmt = stmt.order_by(PriceHistory.date.desc()).limit(limit)
+        stmt = stmt.where(Price.date <= end)
+    stmt = stmt.order_by(Price.date.desc()).limit(limit)
     rows = (await session.execute(stmt)).scalars().all()
     return [
         PriceRow(
@@ -168,7 +153,7 @@ async def get_price_history(
 
 @tool(
     name="get_news_events",
-    description="News events for a company or sector, filtered by minimum significance.",
+    description="News events for a company, filtered by minimum significance score.",
     tasks={
         TASK_ARTICLE_SUMMARY,
         TASK_SIGNIFICANCE,
@@ -183,38 +168,27 @@ async def get_news_events(
     session: AsyncSession,
     *,
     company_id: int | None = None,
-    industry_id: int | None = None,
-    min_significance: SignificanceTier | None = None,
+    min_significance: float | None = None,
     limit: int = 50,
 ) -> list[NewsEventResult]:
-    """Filter by company or industry (the "who gets affected" key). ``min_significance``
-    keeps events at or above the given tier."""
+    """Filter by company. ``min_significance`` keeps events at or above the given score (0–1)."""
     stmt = select(NewsEvent)
     if company_id is not None:
         stmt = stmt.where(NewsEvent.company_id == company_id)
-    if industry_id is not None:
-        stmt = stmt.where(NewsEvent.industry_id == industry_id)
     if min_significance is not None:
-        allowed = [
-            tier
-            for tier, rank in _SIGNIFICANCE_RANK.items()
-            if rank >= _SIGNIFICANCE_RANK[min_significance]
-        ]
-        stmt = stmt.where(NewsEvent.significance_tier.in_(allowed))
+        stmt = stmt.where(NewsEvent.significance >= min_significance)
     stmt = stmt.order_by(NewsEvent.published_at.desc()).limit(limit)
     rows = (await session.execute(stmt)).scalars().all()
     return [
         NewsEventResult(
             news_event_id=r.id,
             company_id=r.company_id,
-            industry_id=r.industry_id,
             url=r.url,
             source=r.source,
             published_at=r.published_at,
             headline=r.headline,
             tickers=list(r.tickers),
-            sentiment_score=r.sentiment_score,
-            significance_tier=r.significance_tier,
+            significance=r.significance,
             summary=r.summary,
         )
         for r in rows
@@ -235,8 +209,8 @@ async def screen_stocks(
 ) -> list[ScreenCandidate]:
     """Typed-filter screen. The agent fills a ``ScreenFilters``; it never writes the SQL."""
     stmt = select(Company)
-    if filters.sector_id is not None:
-        stmt = stmt.where(Company.sector_id == filters.sector_id)
+    if filters.sector is not None:
+        stmt = stmt.where(Company.sector == filters.sector)
     if filters.industry_id is not None:
         stmt = stmt.where(Company.industry_id == filters.industry_id)
     if filters.coverage_tier is not None:
@@ -250,7 +224,7 @@ async def screen_stocks(
             company_id=c.id,
             ticker=c.ticker,
             name=c.name,
-            sector_id=c.sector_id,
+            sector=c.sector,
             industry_id=c.industry_id,
             coverage_tier=c.coverage_tier,
         )
@@ -259,25 +233,25 @@ async def screen_stocks(
 
 
 @tool(
-    name="get_pulse_state",
-    description="Live quotes for the pulse set (fixed core + user mega-caps).",
+    name="get_brief_state",
+    description="Live quotes for the brief set (fixed core + user mega-caps).",
     tasks={TASK_PULSE_SNAPSHOT, TASK_TOP_SNAPSHOT},
-    output_model=PulseInstrument,
+    output_model=BriefInstrument,
 )
-async def get_pulse_state(
+async def get_brief_state(
     session: AsyncSession,
     market_provider: MarketDataProvider,
-) -> list[PulseInstrument]:
-    """Compose the pulse set from ``PULSE_CORE`` (config) + ``pulse_user`` (preferences) and
-    fetch live quotes via the yFinance wrapper. Read-only: persisting a pulse is the pulse
+) -> list[BriefInstrument]:
+    """Compose the brief set from ``BRIEF_CORE`` (config) + ``brief_user`` (preferences) and
+    fetch live quotes via the yFinance wrapper. Read-only: persisting a brief is the brief
     workflow's job, not this tool's."""
     prefs = (
         await session.execute(select(UserPreferences).where(UserPreferences.id == 1))
     ).scalar_one_or_none()
-    user_symbols = list(prefs.pulse_user) if prefs and prefs.pulse_user else []
+    user_symbols = list(prefs.brief_user) if prefs and prefs.brief_user else []
 
-    labels: dict[str, str | None] = {item["symbol"]: item["label"] for item in PULSE_CORE}
-    symbols = [item["symbol"] for item in PULSE_CORE]
+    labels: dict[str, str | None] = {item["symbol"]: item["label"] for item in BRIEF_CORE}
+    symbols = [item["symbol"] for item in BRIEF_CORE]
     for sym in user_symbols:
         if sym not in labels:
             labels[sym] = None
@@ -285,7 +259,7 @@ async def get_pulse_state(
 
     quotes = await market_provider.get_quotes(symbols)
     return [
-        PulseInstrument(
+        BriefInstrument(
             symbol=q.symbol,
             label=labels.get(q.symbol),
             price=q.price,
@@ -294,6 +268,10 @@ async def get_pulse_state(
         )
         for q in quotes
     ]
+
+
+# Keep old name as alias for backward-compat with callers that haven't migrated yet.
+get_pulse_state = get_brief_state
 
 
 @tool(
@@ -310,8 +288,7 @@ async def search_similar_events(
     k: int = 10,
 ) -> list[SimilarEvent]:
     """Embed ``query_text`` with the fixed model and rank stored summary embeddings by cosine
-    distance. Only events embedded with the same model are comparable, so results are scoped
-    to that model name."""
+    distance. Only events embedded with the same model are comparable."""
     embedded = await embeddings_provider.embed_query(query_text)
     distance = NewsEvent.embedding.cosine_distance(embedded.vector)
     stmt = (
@@ -327,7 +304,7 @@ async def search_similar_events(
             news_event_id=event.id,
             headline=event.headline,
             published_at=event.published_at,
-            significance_tier=event.significance_tier,
+            significance=event.significance,
             summary=event.summary,
             similarity=1.0 - float(dist),
         )

@@ -3,18 +3,12 @@
 These are **tool-layer DTOs**, deliberately distinct from the other three model kinds:
 - ORM models (``db/models/``) describe what's *stored* (tables);
 - JSONB payloads (``db/payloads.py``) describe a variable *column's* persistence shape;
-- API schemas (``api/``) describe what's *transmitted* over the wire.
+- API schemas (``api/``) describe what's *transmitted* over wire.
 
 A tool contract is none of those: it's what a tool *hands back to its caller* (the agent or a
 workflow). It must never be an ORM row — returning a mapped instance would leak the storage
 shape into the AI's contract and drag session/lazy-load state across boundaries — so each tool
-returns a plain, serializable projection defined here. (Result shapes that genuinely *are* a
-persistence shape, like ``PulseInstrument``, are imported from ``db/payloads.py`` instead, not
-duplicated here.)
-
-Resemblance to an ORM model (e.g. ``FinancialRow`` vs ``FinancialData``) is expected: a read
-tool flattens a stored row into a JSON-friendly view (Decimal -> float, no FK/PK/timestamps).
-Similar fields, different concern.
+returns a plain, serializable projection defined here.
 """
 
 from __future__ import annotations
@@ -23,22 +17,17 @@ from datetime import date, datetime
 
 from pydantic import BaseModel
 
-from app.db.enums import Channel, CoverageTier, ProseKind, SignificanceTier
+from app.db.enums import Channel, CoverageTier
 
 # ==============================================================================
 # Inputs
 # ==============================================================================
-# Principle: a tool's input parameters are expressed as a typed Pydantic model, not bare
-# keyword arguments. The model makes the contract explicit and validatable — the agent fills a
-# structured object the tool can trust, rather than the tool parsing loose kwargs — and it's the
-# same contract the MCP layer publishes. ``ScreenFilters`` is the canonical example: a
-# parameterized screen whose filters travel as one validated unit (and never as AI-authored SQL).
 
 
 class ScreenFilters(BaseModel):
     """Typed inputs for ``screen_stocks`` — a parameterized screen, never AI-authored SQL."""
 
-    sector_id: int | None = None
+    sector: str | None = None
     industry_id: int | None = None
     coverage_tier: CoverageTier | None = None
     exchange: str | None = None
@@ -56,7 +45,7 @@ class CompanyResult(BaseModel):
     company_id: int
     ticker: str
     name: str
-    sector_id: int | None
+    sector: str | None
     industry_id: int | None
     exchange: str | None
     coverage_tier: CoverageTier
@@ -88,14 +77,12 @@ class PriceRow(BaseModel):
 class NewsEventResult(BaseModel):
     news_event_id: int
     company_id: int | None
-    industry_id: int | None
     url: str
     source: str | None
     published_at: datetime
     headline: str
     tickers: list[str]
-    sentiment_score: float | None
-    significance_tier: SignificanceTier
+    significance: float
     summary: str
 
 
@@ -105,7 +92,7 @@ class SimilarEvent(BaseModel):
     news_event_id: int
     headline: str
     published_at: datetime
-    significance_tier: SignificanceTier
+    significance: float
     summary: str
     similarity: float
 
@@ -114,7 +101,7 @@ class ScreenCandidate(BaseModel):
     company_id: int
     ticker: str
     name: str
-    sector_id: int | None
+    sector: str | None
     industry_id: int | None
     coverage_tier: CoverageTier
 
@@ -123,9 +110,8 @@ class ScreenCandidate(BaseModel):
 
 
 class ScoreRow(BaseModel):
-    kind: ProseKind
     score: float
-    components: dict[str, float] | None
+    scores: dict[str, float] | None
     rubric_version: str
     model_name: str
     generated_at: datetime
@@ -140,26 +126,25 @@ class LatestScores(BaseModel):
     sentimental: ScoreRow | None
 
 
-class CitationRef(BaseModel):
+class SourceRef(BaseModel):
     news_event_id: int | None
     source_ref: str | None
 
 
 class ProseRow(BaseModel):
     prose_id: int
-    kind: ProseKind
     body: str
     model_name: str
     generated_at: datetime
     data_through: datetime | None
-    citations: list[CitationRef]
+    sources: list[SourceRef]
 
 
 # --- Delivery ----------------------------------------------------------------
 
 
 class DedupeResult(BaseModel):
-    dedupe_key: str
+    content_hash: str
     already_sent: bool
     channel: Channel | None = None
     sent_at: datetime | None = None

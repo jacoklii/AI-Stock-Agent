@@ -1,8 +1,9 @@
 """Sentiment scoring + prose-change detection — deterministic, no LLM.
 
 Two deterministic jobs:
-- ``score_sentiment`` rolls the per-event ``sentiment_score`` (-1..1, set by the agent at
-  ingest) into a 0-100 axis, weighting more significant events more heavily.
+- ``score_sentiment`` uses the per-event ``significance`` score (0-1, set at ingest) as a
+  weight for the event pool. Directionality (bearish/bullish) is deferred until LLM-based
+  per-event sentiment classification lands; for now the score reflects coverage density.
 - ``prose_changed`` is the embedding-similarity check the prose pipeline uses to decide whether
   a newly generated read differs enough from the previous row to be worth storing (keeping the
   prose table sparse by design). Cosine distance, threshold-gated.
@@ -13,20 +14,12 @@ from __future__ import annotations
 import math
 
 from app.analysis.fundamental_score import ScoreResult
-from app.db.enums import SignificanceTier
-from app.db.payloads import ScoreComponents
+from app.db.payloads import ScorePayload
 from app.tools.tool_schema import NewsEventResult
 
 RUBRIC_VERSION = "sentiment-v1"
 ENGINE = "analysis.sentiment_analysis"
 _NEUTRAL = 50.0
-
-# More significant coverage carries more weight in the roll-up.
-_TIER_WEIGHT = {
-    SignificanceTier.routine: 1.0,
-    SignificanceTier.notable: 2.0,
-    SignificanceTier.significant: 4.0,
-}
 
 # Default cosine-distance threshold: prose is "changed" when it has drifted at least this far
 # from the previous embedding. Conservative — sparse-by-design.
@@ -34,24 +27,22 @@ PROSE_CHANGE_DISTANCE = 0.12
 
 
 def score_sentiment(news: list[NewsEventResult]) -> ScoreResult:
-    """Significance-weighted mean of event sentiment, mapped -1..1 -> 0..100. No scored events
-    -> neutral 50."""
-    scored = [(e, e.sentiment_score) for e in news if e.sentiment_score is not None]
-    if not scored:
-        components = ScoreComponents({"mean_sentiment": 0.0, "events": 0.0, "significant_share": 0.0})
+    """Significance-weighted event density mapped to 0-100. High-significance coverage nudges
+    the score above neutral; direction awaits per-event LLM classification."""
+    if not news:
+        components = ScorePayload({"density": 0.0, "events": 0.0, "mean_significance": 0.0})
         return ScoreResult(_NEUTRAL, components, RUBRIC_VERSION, ENGINE)
 
-    weighted_sum = sum(s * _TIER_WEIGHT[e.significance_tier] for e, s in scored)
-    weight_total = sum(_TIER_WEIGHT[e.significance_tier] for e, _ in scored)
-    mean = weighted_sum / weight_total if weight_total else 0.0
-    significant = sum(1 for e, _ in scored if e.significance_tier is SignificanceTier.significant)
-
-    headline = max(0.0, min(100.0, (mean + 1.0) * 50.0))
-    components = ScoreComponents(
+    total = sum(e.significance for e in news)
+    mean_sig = total / len(news)
+    # Map mean significance (0-1) to a 50-70 range: neutral when no meaningful news,
+    # capped near 70 until directional sentiment is available.
+    headline = max(0.0, min(100.0, _NEUTRAL + mean_sig * 20.0))
+    components = ScorePayload(
         {
-            "mean_sentiment": round(mean, 4),
-            "events": float(len(scored)),
-            "significant_share": round(significant / len(scored), 4),
+            "density": round(total, 4),
+            "events": float(len(news)),
+            "mean_significance": round(mean_sig, 4),
         }
     )
     return ScoreResult(round(headline, 2), components, RUBRIC_VERSION, ENGINE)

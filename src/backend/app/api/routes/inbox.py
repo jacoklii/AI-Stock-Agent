@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import ro_session, rw_session
 from app.api.schemas import InboxItem
-from app.db.models.delivery import NotificationHistory
+from app.db.models.delivery import Notification
 
 router = APIRouter(tags=["inbox"])
 
@@ -19,9 +19,7 @@ router = APIRouter(tags=["inbox"])
 async def inbox(limit: int = 100, session: AsyncSession = Depends(ro_session)) -> list[InboxItem]:
     rows = (
         await session.execute(
-            select(NotificationHistory)
-            .order_by(NotificationHistory.sent_at.desc())
-            .limit(limit)
+            select(Notification).order_by(Notification.sent_at.desc()).limit(limit)
         )
     ).scalars()
     return [
@@ -39,10 +37,10 @@ async def inbox(limit: int = 100, session: AsyncSession = Depends(ro_session)) -
     ]
 
 
-async def _get_notification(notification_id: int, session: AsyncSession) -> NotificationHistory:
+async def _get_notification(notification_id: int, session: AsyncSession) -> Notification:
     row = (
         await session.execute(
-            select(NotificationHistory).where(NotificationHistory.id == notification_id)
+            select(Notification).where(Notification.id == notification_id)
         )
     ).scalar_one_or_none()
     if row is None:

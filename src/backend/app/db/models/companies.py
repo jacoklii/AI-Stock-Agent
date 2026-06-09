@@ -1,60 +1,57 @@
-"""Company identity + the controlled taxonomy it is classified by.
+"""Company identity + the critical industries vocabulary it is classified against.
 
-``companies`` is the spine AND the research surface: every stock the AI has ever touched
-lives here, distinguished by ``coverage_tier``. ``watchlist_metadata`` holds the per-stock
-context that only exists once a company is promoted — it changes on the same user
-promote/demote action as the tier, so the two are coupled (1:1, cascade).
+``companies`` is the spine and the research surface: every stock the AI has ever touched
+lives here, distinguished by ``coverage_tier``. ``sector`` is a plain string (GICS or
+user-supplied); ``industry_id`` is an optional FK to ``industries`` — the curated set of
+critical industries the user is actively tracking. A company with ``industry_id`` set and
+deep coverage is a prime candidate for ``industry_critical`` tier.
 
-The taxonomy (``sectors``, ``industries``) is the controlled vocabulary, modelled as
-lookup tables (not enums) so new critical industries are an INSERT, not a migration.
-``industry`` is the "who gets affected" key. All joins elsewhere are on ``company_id``.
+``industries`` is user-editable: adding an entry expands what the system tracks at depth.
+All joins elsewhere are on ``company_id``, never ticker.
 """
 
 from __future__ import annotations
 
-from datetime import datetime
-
-from sqlalchemy import DateTime, ForeignKey, String, Text, func
+from sqlalchemy import Boolean, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db.base import Base, PydanticJSONB, TimestampMixin, intpk
+from app.db.base import Base, TimestampMixin, intpk
 from app.db.enums import CoverageTier, coverage_tier_enum
-from app.db.payloads import Thresholds
-
-
-class Sector(Base, TimestampMixin):
-    __tablename__ = "sectors"
-
-    id: Mapped[intpk]
-    key: Mapped[str] = mapped_column(String(64), unique=True, index=True)
-    name: Mapped[str] = mapped_column(String(128))
-
-    industries: Mapped[list["Industry"]] = relationship(back_populates="sector")
 
 
 class Industry(Base, TimestampMixin):
+    """Controlled vocabulary of critical industries — user-editable.
+
+    Each entry represents a domain the user is actively tracking (e.g. "AI / ML",
+    "Quantum Computing", "Aerospace & Defense"). ``is_active`` lets the user pause
+    a tracked industry without deleting it.
+    """
+
     __tablename__ = "industries"
 
     id: Mapped[intpk]
     key: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(128))
-    sector_id: Mapped[int] = mapped_column(ForeignKey("sectors.id"), index=True)
-
-    sector: Mapped["Sector"] = relationship(back_populates="industries")
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
 
 
 class Company(Base, TimestampMixin):
     __tablename__ = "companies"
 
     id: Mapped[intpk]
-    # yFinance ticker symbol (e.g. AAPL, BRK-B, ^GSPC). 20 chars covers the full yFinance
-    # symbol space (index `^`, share-class `-`, suffixes like GC=F / DX-Y.NYB / BTC-USD).
-    # External identifier only — joins are on company_id, never the ticker.
+    # yFinance ticker symbol (e.g. AAPL, BRK-B, ^GSPC). External identifier only —
+    # joins are on company_id, never the ticker.
     ticker: Mapped[str] = mapped_column(String(20), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(256))
-    sector_id: Mapped[int | None] = mapped_column(ForeignKey("sectors.id"), index=True, nullable=True)
-    industry_id: Mapped[int | None] = mapped_column(ForeignKey("industries.id"), index=True, nullable=True)
+    sector: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    sub_industry: Mapped[str | None] = mapped_column(String(128), nullable=True)
     exchange: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # Optional link to the critical industries vocabulary. Set when this company is
+    # relevant to a tracked industry; drives industry_critical tier assignment.
+    industry_id: Mapped[int | None] = mapped_column(
+        ForeignKey("industries.id", ondelete="SET NULL"), index=True, nullable=True
+    )
     coverage_tier: Mapped[CoverageTier] = mapped_column(
         coverage_tier_enum,
         default=CoverageTier.discovered,
@@ -62,21 +59,4 @@ class Company(Base, TimestampMixin):
         index=True,
     )
 
-    watchlist_meta: Mapped["WatchlistMetadata | None"] = relationship(
-        back_populates="company", uselist=False, cascade="all, delete-orphan"
-    )
-
-
-class WatchlistMetadata(Base, TimestampMixin):
-    __tablename__ = "watchlist_metadata"
-
-    id: Mapped[intpk]
-    company_id: Mapped[int] = mapped_column(
-        ForeignKey("companies.id", ondelete="CASCADE"), unique=True, index=True
-    )
-    why_added: Mapped[str | None] = mapped_column(Text, nullable=True)
-    why_relevant: Mapped[str | None] = mapped_column(Text, nullable=True)
-    thresholds: Mapped[Thresholds | None] = mapped_column(PydanticJSONB(Thresholds), nullable=True)
-    added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-
-    company: Mapped["Company"] = relationship(back_populates="watchlist_meta")
+    industry: Mapped["Industry | None"] = relationship()

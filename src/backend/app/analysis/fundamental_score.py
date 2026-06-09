@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.db.payloads import ScoreComponents
+from app.db.payloads import ScorePayload
 from app.tools.tool_schema import FinancialRow, PriceRow
 
 RUBRIC_VERSION = "fundamental-v1"
@@ -26,7 +26,7 @@ class ScoreResult:
     """A scored axis: the headline 0-100, its sub-scores, and the producing engine + rubric."""
 
     score: float
-    components: ScoreComponents
+    components: ScorePayload
     rubric_version: str
     engine: str
 
@@ -75,7 +75,7 @@ def score_fundamental(
     """Compute the fundamental score. Empty financials -> a neutral 50 (out-of-scope companies
     simply have nothing to score; that's the cost boundary, not an error)."""
     if not financials:
-        components = ScoreComponents({k: _NEUTRAL for k in _WEIGHTS})
+        components = ScorePayload({k: _NEUTRAL for k in _WEIGHTS})
         return ScoreResult(_NEUTRAL, components, RUBRIC_VERSION, ENGINE)
 
     latest = financials[0]
@@ -88,7 +88,7 @@ def score_fundamental(
     headline = sum(subs[k] * w for k, w in _WEIGHTS.items())
     return ScoreResult(
         score=round(_clamp(headline), 2),
-        components=ScoreComponents({k: round(v, 2) for k, v in subs.items()}),
+        components=ScorePayload({k: round(v, 2) for k, v in subs.items()}),
         rubric_version=RUBRIC_VERSION,
         engine=ENGINE,
     )

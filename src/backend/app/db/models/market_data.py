@@ -2,8 +2,10 @@
 
 These tables share a module for cohesion but NOT a write path: prices land daily,
 financials quarterly, calendar events ad-hoc. They must never share a write transaction —
-different cadences, different ingest jobs. (Sector-level aggregates live in ``news.py``
-alongside the sentiment they roll up.)
+different cadences, different ingest jobs.
+
+``financials`` is populated for ``watchlist`` + ``industry_critical`` companies only;
+the broader discovered surface gets price tracking only.
 """
 
 from __future__ import annotations
@@ -18,14 +20,13 @@ from app.db.base import Base, PydanticJSONB, TimestampMixin, intpk
 from app.db.enums import CalendarEventType, PeriodType, calendar_event_type_enum, period_type_enum
 from app.db.payloads import CalendarPayload
 
-# Money/price values: exact decimal, generous precision for index levels and market caps.
 _MONEY = Numeric(20, 4)
 
 
-class PriceHistory(Base, TimestampMixin):
+class Price(Base, TimestampMixin):
     """Daily OHLCV. Intraday is pulled on demand and not stored here."""
 
-    __tablename__ = "price_history"
+    __tablename__ = "prices"
     __table_args__ = (UniqueConstraint("company_id", "date"),)
 
     id: Mapped[intpk]
@@ -39,10 +40,11 @@ class PriceHistory(Base, TimestampMixin):
     volume: Mapped[int | None] = mapped_column(Numeric(20, 0), nullable=True)
 
 
-class FinancialData(Base, TimestampMixin):
-    """One row per company per reporting period. Populated for deep-coverage companies."""
+class Financial(Base, TimestampMixin):
+    """One row per company per reporting period. Populated for watchlist +
+    industry_critical companies only — deliberate cost/focus boundary."""
 
-    __tablename__ = "financial_data"
+    __tablename__ = "financials"
     __table_args__ = (UniqueConstraint("company_id", "period_end", "period_type"),)
 
     id: Mapped[intpk]
@@ -59,7 +61,7 @@ class FinancialData(Base, TimestampMixin):
     net_income: Mapped[Decimal | None] = mapped_column(_MONEY, nullable=True)
 
 
-class CatalystCalendar(Base, TimestampMixin): 
+class CatalystCalendar(Base, TimestampMixin):
     """Earnings / dividend / ex-dividend dates. Variable details go in ``payload``."""
 
     __tablename__ = "catalyst_calendar"

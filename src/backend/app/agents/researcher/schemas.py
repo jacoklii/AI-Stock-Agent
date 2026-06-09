@@ -13,22 +13,21 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from app.db.enums import SignificanceTier
-
 
 class ArticleSummaryOut(BaseModel):
-    """Per-article ingest output: the canonical summary (no raw body kept) + a sentiment read."""
+    """Per-article ingest output: the canonical summary (no raw body stored)."""
 
     summary: str
-    sentiment_score: float = Field(ge=-1.0, le=1.0, description="-1 (bearish) .. 1 (bullish)")
 
 
 class SignificanceOut(BaseModel):
-    tier: SignificanceTier
+    """Significance classification for a news event (0 = irrelevant, 1 = highly significant)."""
+
+    significance: float = Field(ge=0.0, le=1.0)
 
 
 class SnapshotOut(BaseModel):
-    """A short prose snapshot (pulse movement, or top-of-digest synthesis)."""
+    """A short prose snapshot (brief movement, or top-of-digest synthesis)."""
 
     snapshot: str
 

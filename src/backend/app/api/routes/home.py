@@ -1,4 +1,9 @@
-"""Home / detailed-digest mirror."""
+"""Home / detailed-digest mirror.
+
+Per ARCHITECTURE.md the digest is NOT persisted as its own table — it is reconstructed from the
+most recent ``analysis`` row of ``type=summary`` (the top snapshot + section snapshots the digest
+workflow writes). That workflow is deferred, so this returns 404 until a summary row exists.
+"""
 
 from __future__ import annotations
 
@@ -8,7 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import ro_session
 from app.api.schemas import DigestSectionOut, DigestView
-from app.db.models.delivery import ReadingListRun
+from app.db.enums import AnalysisType
+from app.db.models.analysis import Analysis
 
 router = APIRouter(tags=["home"])
 
@@ -17,23 +23,33 @@ router = APIRouter(tags=["home"])
 async def latest_digest(session: AsyncSession = Depends(ro_session)) -> DigestView:
     row = (
         await session.execute(
-            select(ReadingListRun).order_by(ReadingListRun.generated_at.desc()).limit(1)
+            select(Analysis)
+            .where(Analysis.type == AnalysisType.summary)
+            .order_by(Analysis.generated_at.desc())
+            .limit(1)
         )
     ).scalar_one_or_none()
     if row is None:
         raise HTTPException(status_code=404, detail="no digest has been generated yet")
+
+    # content is an open JSONB shape (keys defined by the deferred digest prompt) — read defensively.
+    content = row.content.model_dump() if row.content is not None else {}
+    sections = [
+        DigestSectionOut(
+            section_title=s.get("section_title", ""),
+            snapshot=s.get("snapshot", ""),
+            article_refs=list(s.get("article_refs", [])),
+            key_tickers=list(s.get("key_tickers", [])),
+        )
+        for s in content.get("sections", [])
+    ]
+    source_event_ids = (
+        list(row.supporting_inputs.news_event_ids) if row.supporting_inputs is not None else []
+    )
     return DigestView(
         id=row.id,
         generated_at=row.generated_at,
-        top_snapshot=row.top_snapshot,
-        sections=[
-            DigestSectionOut(
-                section_title=s.section_title,
-                snapshot=s.snapshot,
-                article_refs=[r.news_event_id for r in s.article_refs],
-                key_tickers=list(s.key_tickers),
-            )
-            for s in row.sections
-        ],
-        source_event_ids=list(row.source_event_ids),
+        top_snapshot=content.get("top_snapshot"),
+        sections=sections,
+        source_event_ids=source_event_ids,
     )
