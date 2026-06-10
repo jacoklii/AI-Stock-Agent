@@ -26,7 +26,7 @@ WF_SECTOR_RESEARCH = "sector_research"
 WF_RESCORE = "company_rescore"
 WF_PROSE_REGEN = "prose_regeneration"
 WF_SIGNIFICANCE_RECHECK = "significance_recheck"
-WF_ON_DEMAND = "on_demand_research"
+WF_DEEP_RESEARCH = "deep_research"
 
 
 class TriggerKind(str, enum.Enum):
@@ -75,7 +75,7 @@ def triggers_for_kind(kind: TriggerKind) -> list[Trigger]:
 
 
 # --- Declared triggers --------------------------------------------------------
-# Cron times are UTC (all timestamps in the system are UTC). Pulse slots map to PulseSlot.
+# Cron times are UTC (all timestamps in the system are UTC). Brief slots are plain strings.
 
 register_trigger(Trigger(
     name="digest_daily",
@@ -130,9 +130,16 @@ register_trigger(Trigger(
     source="score_shift_pct",
 ))
 register_trigger(Trigger(
-    name="on_demand_request",
+    name="deep_research_request",
     kind=TriggerKind.on_demand,
-    workflow=WF_ON_DEMAND,
-    description="Interface request: answer from stored research, fetch fresh only if stale.",
+    workflow=WF_DEEP_RESEARCH,
+    description="Interface request: open a bounded research session, state-first then external.",
     source="interface",
+))
+register_trigger(Trigger(
+    name="deep_research_daily",
+    kind=TriggerKind.scheduled,
+    workflow=WF_DEEP_RESEARCH,
+    description="Self-directed session: resume unfinished work or pick a focus from breadth signal; rests when nothing is material.",
+    cron="0 14 * * 1-5",
 ))

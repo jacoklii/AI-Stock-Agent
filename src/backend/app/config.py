@@ -44,6 +44,12 @@ class Settings(BaseSettings):
     # News provider (Finnhub). Free-tier REST; depth-driven coverage.
     finnhub_api_key: str | None = None
 
+    # Web search (Tavily REST). Single credential for the deep-research web tools.
+    web_search_api_key: str | None = None
+
+    # SEC EDGAR is public and keyless but requires a descriptive User-Agent on every request.
+    sec_user_agent: str = "ai-stock-agent (contact: set SEC_USER_AGENT)"
+
     # Notifier. Email via SMTP; the brief pulse goes to iMessage (AppleScript on the host) or
     # WhatsApp. Addresses default to UserPreferences.channels; these are the transport creds.
     smtp_host: str | None = None
@@ -54,6 +60,14 @@ class Settings(BaseSettings):
 
     # Bound on the agent's per-task tool-use loop — a hard stop on autonomous tool calls.
     agent_max_tool_iters: int = 8
+
+    # Breadth automation: start the in-process scheduler in the API lifespan. Off by default so
+    # dev/tests never fire external-API jobs; the always-on host sets ENABLE_SCHEDULER=true.
+    enable_scheduler: bool = False
+
+    # At most this many research sessions may be open at once (the architecture's ≤3 rule);
+    # opening one past the cap blocks and surfaces instead of starting a 4th.
+    deep_research_max_active: int = 3
 
 
 @lru_cache
@@ -68,6 +82,10 @@ def get_settings() -> Settings:
 MODEL_OPUS = "claude-opus-4-8"
 MODEL_SONNET = "claude-sonnet-4-6"
 MODEL_HAIKU = "claude-haiku-4-5-20251001"
+
+# A deep-research session self-paces over many tool calls, so it gets a larger loop bound than
+# the single-shot tasks (which use ``agent_max_tool_iters``). Still bounded — sessions terminate.
+DEEP_RESEARCH_MAX_ITERS = 24
 
 
 # --- Fixed constants ----------------------------------------------------------

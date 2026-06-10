@@ -24,15 +24,17 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
+from app.agents.budget import Budget
 from app.agents.researcher import schemas
-from app.config import MODEL_HAIKU, MODEL_OPUS, MODEL_SONNET, get_settings
+from app.config import DEEP_RESEARCH_MAX_ITERS, MODEL_HAIKU, MODEL_OPUS, MODEL_SONNET, get_settings
 from app.providers.llm import LLMProvider, get_llm_provider
 from app.tools.invoke import invoke_tool, tool_json_schema
 from app.tools.registry import (
     TASK_ARTICLE_SUMMARY,
     TASK_COMPANY_PROSE,
+    TASK_DEEP_RESEARCH,
     TASK_FOLLOWUP,
     TASK_PULSE_SNAPSHOT,
     TASK_SECTION_SNAPSHOT,
@@ -42,6 +44,26 @@ from app.tools.registry import (
 )
 
 _PROMPT_DIR = Path(__file__).parent
+
+# Reflection: how many times to send a finding back for citations before accepting it anyway.
+_MAX_GROUNDING_NUDGES = 1
+_GROUNDING_NUDGE = (
+    "Every finding must cite the news_event ids it draws on. Add them to `sources`, then resubmit."
+)
+
+
+def _needs_grounding(out: BaseModel) -> bool:
+    """True when an output has findings but no cited sources (the deep-research grounding rule)."""
+    findings = getattr(out, "findings", None)
+    sources = getattr(out, "sources", None)
+    return bool(findings) and sources is not None and len(sources) == 0
+
+
+def _usage_tokens(resp: Any) -> int:
+    usage = getattr(resp, "usage", None)
+    if usage is None:
+        return 0
+    return (getattr(usage, "input_tokens", 0) or 0) + (getattr(usage, "output_tokens", 0) or 0)
 
 
 @dataclass(frozen=True)
@@ -53,6 +75,9 @@ class TaskSpec:
     prompt_file: str
     model: str
     output_model: type[BaseModel]
+    # Per-task loop bound; ``None`` falls back to the agent default (``agent_max_tool_iters``).
+    # Deep research self-paces over many steps, so it sets a larger one.
+    max_iters: int | None = None
 
 
 # Model choice mirrors the architecture: Haiku for high-volume ingest, Sonnet/Opus for synthesis.
@@ -77,6 +102,13 @@ TASKS: dict[str, TaskSpec] = {
     ),
     TASK_FOLLOWUP: TaskSpec(
         TASK_FOLLOWUP, "prompt_followup.md", MODEL_SONNET, schemas.FollowupOut
+    ),
+    TASK_DEEP_RESEARCH: TaskSpec(
+        TASK_DEEP_RESEARCH,
+        "prompt_deep_research.md",
+        MODEL_SONNET,
+        schemas.DeepResearchOut,
+        max_iters=DEEP_RESEARCH_MAX_ITERS,
     ),
 }
 
@@ -114,8 +146,19 @@ class Researcher:
         self._llm = llm or get_llm_provider()
         self._max_iters = get_settings().agent_max_tool_iters
 
-    async def run_task(self, task_name: str, *, inputs: dict[str, Any], max_tokens: int = 4096) -> BaseModel:
+    async def run_task(
+        self,
+        task_name: str,
+        *,
+        inputs: dict[str, Any],
+        max_tokens: int = 4096,
+        budget: Budget | None = None,
+    ) -> BaseModel:
+        """Run one task to a structured result. If ``budget`` is given, each LLM call's token
+        usage is accumulated onto it and the loop self-paces — once the ceiling is reached the
+        agent is forced to submit on the next turn (a graceful stop, not a crash)."""
         spec = TASKS[task_name]
+        max_iters = spec.max_iters or self._max_iters
         allowlist = {t.name: t for t in get_tools_for(task_name)}
         submit = _submit_tool(spec)
         tools = [
@@ -127,10 +170,12 @@ class Researcher:
         messages: list[dict[str, Any]] = [
             {"role": "user", "content": json.dumps(_jsonable(inputs), default=str)}
         ]
+        grounding_nudges = 0
 
-        for attempt in range(self._max_iters):
-            # On the last attempt, force the submit tool so we always end with structured output.
-            force_submit = attempt == self._max_iters - 1
+        for attempt in range(max_iters):
+            # Force the submit tool on the last attempt, or once the budget ceiling is hit, so we
+            # always end with structured output and never overspend.
+            force_submit = attempt == max_iters - 1 or (budget is not None and budget.over())
             resp = await self._llm.create(
                 model=spec.model,
                 system=system,
@@ -141,6 +186,8 @@ class Researcher:
                 ),
                 max_tokens=max_tokens,
             )
+            if budget is not None:
+                budget.add(_usage_tokens(resp))
             messages.append({"role": "assistant", "content": resp.content})
 
             tool_uses = [b for b in resp.content if getattr(b, "type", None) == "tool_use"]
@@ -151,10 +198,44 @@ class Researcher:
                 )
                 continue
 
+            submit_block = next((b for b in tool_uses if b.name == submit["name"]), None)
+            if submit_block is not None:
+                try:
+                    out = spec.output_model.model_validate(submit_block.input)
+                except ValidationError as exc:
+                    if force_submit:  # a hard stop stays a visible failure in `tasks`
+                        raise
+                    # Self-correction: feed the validation error back and let the model resubmit.
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "tool_result",
+                                    "tool_use_id": submit_block.id,
+                                    "content": f"Invalid result, fix and resubmit: {exc}",
+                                    "is_error": True,
+                                }
+                            ],
+                        }
+                    )
+                    continue
+                # Reflection: bounce an ungrounded result back for citations (unless we must stop).
+                if not force_submit and grounding_nudges < _MAX_GROUNDING_NUDGES and _needs_grounding(out):
+                    grounding_nudges += 1
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "tool_result", "tool_use_id": submit_block.id, "content": _GROUNDING_NUDGE}
+                            ],
+                        }
+                    )
+                    continue
+                return out
+
             tool_results: list[dict[str, Any]] = []
             for block in tool_uses:
-                if block.name == submit["name"]:
-                    return spec.output_model.model_validate(block.input)
                 result = await self._run_tool(allowlist, block.name, block.input)
                 tool_results.append(
                     {
@@ -163,18 +244,22 @@ class Researcher:
                         "content": json.dumps(result, default=str),
                     }
                 )
-            if tool_results:
-                messages.append({"role": "user", "content": tool_results})
+            messages.append({"role": "user", "content": tool_results})
 
         raise RuntimeError(
-            f"researcher task {task_name!r} did not submit within {self._max_iters} iterations"
+            f"researcher task {task_name!r} did not submit within {max_iters} iterations"
         )
 
     async def _run_tool(self, allowlist: dict, name: str, args: dict[str, Any]) -> Any:
         spec = allowlist.get(name)
         if spec is None:  # the registry allowlist is the stop — refuse anything off it
             return {"error": f"tool {name!r} is not permitted for this task"}
-        return await invoke_tool(spec, args)
+        try:
+            return await invoke_tool(spec, args)
+        except Exception as exc:
+            # Self-correction: surface the failure (bad args, missing row, provider error) as a
+            # tool result so the model can adjust, instead of crashing the whole task.
+            return {"error": f"{type(exc).__name__}: {exc}"}
 
 
 @lru_cache(maxsize=1)

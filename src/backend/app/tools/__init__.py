@@ -9,8 +9,13 @@ free-form text, or SQL.
 
 from __future__ import annotations
 
-from app.tools.analysis import get_latest_prose, get_latest_scores, get_score_history
-from app.tools.delivery import check_dedupe
+from app.tools.analysis import (
+    get_latest_analysis,
+    get_latest_prose,
+    get_latest_scores,
+    get_score_history,
+)
+from app.tools.delivery import check_dedupe, deliver, send_email, send_imessage, send_whatsapp
 from app.tools.registry import REGISTRY, ToolSpec, get_tools_for, tool
 from app.tools.research import (
     get_brief_state,
@@ -19,8 +24,16 @@ from app.tools.research import (
     get_news_events,
     get_price_history,
     screen_stocks,
+    search_similar,
     search_similar_events,
 )
+from app.tools.state import (
+    close_research,
+    get_research_state,
+    open_research,
+    update_research,
+)
+from app.tools.web import cache_get, cache_set, fetch_sec_filing, web_fetch, web_search
 
 __all__ = [
     "REGISTRY",
@@ -35,10 +48,27 @@ __all__ = [
     "get_brief_state",
     "screen_stocks",
     "search_similar_events",
+    "search_similar",
     # analysis
     "get_latest_scores",
     "get_score_history",
     "get_latest_prose",
+    "get_latest_analysis",
+    # web / sec / cache
+    "web_search",
+    "web_fetch",
+    "fetch_sec_filing",
+    "cache_get",
+    "cache_set",
+    # research state
+    "open_research",
+    "update_research",
+    "close_research",
+    "get_research_state",
     # delivery
     "check_dedupe",
+    "deliver",
+    "send_email",
+    "send_imessage",
+    "send_whatsapp",
 ]

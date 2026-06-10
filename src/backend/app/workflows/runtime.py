@@ -41,6 +41,8 @@ class TaskHandle:
 
     id: int
     result: TaskResult = field(default_factory=TaskResult)
+    # Tokens spent by the work in this task; persisted to ``tasks.tokens_used`` (feeds the budget).
+    tokens: int = 0
 
     def count(self, name: str, n: int = 1) -> None:
         self.result.counts[name] = self.result.counts.get(name, 0) + n
@@ -80,12 +82,14 @@ async def run_task(
         except Exception as exc:
             task.status = TaskStatus.failed
             task.error_message = f"{type(exc).__name__}: {exc}"
+            task.tokens_used = handle.tokens or None  # a failed run still spent tokens
             task.completed_at = _utcnow()
             await session.commit()
             raise
         else:
             task.status = TaskStatus.succeeded
             task.result_summary = handle.result
+            task.tokens_used = handle.tokens or None
             task.completed_at = _utcnow()
             await session.commit()
 

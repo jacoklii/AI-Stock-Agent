@@ -21,15 +21,21 @@ from typing import Any, get_type_hints
 
 from pydantic import BaseModel, create_model
 
-from app.db.session import readonly_session
+from app.db.session import SessionLocal, readonly_session
 from app.providers.embeddings import get_embeddings_provider
 from app.providers.market import get_market_provider
+from app.providers.notifier import get_notifier
+from app.providers.sec import get_sec_provider
+from app.providers.web import get_web_provider
 from app.tools.registry import ToolSpec
 
 # Injected (pre-``*``) parameter name -> factory. ``session`` is handled separately.
 _PROVIDER_FACTORIES = {
     "market_provider": get_market_provider,
     "embeddings_provider": get_embeddings_provider,
+    "web_provider": get_web_provider,
+    "sec_provider": get_sec_provider,
+    "notifier": get_notifier,
 }
 
 
@@ -67,11 +73,13 @@ def _dump(result: Any) -> Any:
 
 
 async def invoke_tool(spec: ToolSpec, args: dict[str, Any]) -> Any:
-    """Validate ``args`` against the tool's params model, inject a read-only session (and any
-    provider the signature asks for), call the tool, and return a JSON-serializable result.
+    """Validate ``args`` against the tool's params model, inject a session (and any provider the
+    signature asks for), call the tool, and return a JSON-serializable result.
 
-    The session is always read-only, so a tool invoked through this path physically cannot write
-    — the central enforcement point for the AI-facing tool surface."""
+    Read tools (the default) get a physically READ-ONLY session — the central enforcement point
+    for the AI-facing tool surface. The few predefined write tools (``spec.writes``: research-state
+    and cache) get a writable session and commit their own work; no production-data table has a
+    write tool, so the AI still cannot write production rows through any path here."""
     validated = _params_model(spec.name)(**args)
     kwargs = {name: getattr(validated, name) for name in type(validated).model_fields}
 
@@ -81,7 +89,8 @@ async def invoke_tool(spec: ToolSpec, args: dict[str, Any]) -> Any:
         for p in sig.parameters.values()
         if p.kind is not inspect.Parameter.KEYWORD_ONLY
     ]
-    async with readonly_session() as session:
+    session_cm = SessionLocal() if spec.writes else readonly_session()
+    async with session_cm as session:
         positional = []
         for pname in injected:
             if pname == "session":

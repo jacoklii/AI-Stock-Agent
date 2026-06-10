@@ -15,15 +15,17 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.analysis import Fundamental, Sentimental
+from app.db.enums import AnalysisType
+from app.db.models.analysis import Analysis, Fundamental, Sentimental
 from app.tools.registry import (
     TASK_COMPANY_PROSE,
+    TASK_DEEP_RESEARCH,
     TASK_FOLLOWUP,
     TASK_SECTION_SNAPSHOT,
     TASK_TOP_SNAPSHOT,
     tool,
 )
-from app.tools.tool_schema import LatestScores, ProseRow, ScoreRow, SourceRef
+from app.tools.tool_schema import AnalysisRow, LatestScores, ProseRow, ScoreRow, SourceRef
 
 _MODEL_MAP = {"fundamental": Fundamental, "sentimental": Sentimental}
 
@@ -54,7 +56,7 @@ async def _latest(session: AsyncSession, company_id: int, kind: str) -> object |
 @tool(
     name="get_latest_scores",
     description="Newest fundamental + sentimental score for a deep-coverage company.",
-    tasks={TASK_COMPANY_PROSE, TASK_SECTION_SNAPSHOT, TASK_TOP_SNAPSHOT, TASK_FOLLOWUP},
+    tasks={TASK_COMPANY_PROSE, TASK_SECTION_SNAPSHOT, TASK_TOP_SNAPSHOT, TASK_FOLLOWUP, TASK_DEEP_RESEARCH},
     output_model=LatestScores,
 )
 async def get_latest_scores(session: AsyncSession, *, company_id: int) -> LatestScores:
@@ -70,7 +72,7 @@ async def get_latest_scores(session: AsyncSession, *, company_id: int) -> Latest
 @tool(
     name="get_score_history",
     description="Historical score trajectory on one axis (fundamental|sentimental), newest first.",
-    tasks={TASK_COMPANY_PROSE, TASK_FOLLOWUP},
+    tasks={TASK_COMPANY_PROSE, TASK_FOLLOWUP, TASK_DEEP_RESEARCH},
     output_model=ScoreRow,
 )
 async def get_score_history(
@@ -95,7 +97,7 @@ async def get_score_history(
 @tool(
     name="get_latest_prose",
     description="Newest prose row on one axis (fundamental|sentimental), with supporting sources.",
-    tasks={TASK_COMPANY_PROSE, TASK_SECTION_SNAPSHOT, TASK_TOP_SNAPSHOT, TASK_FOLLOWUP},
+    tasks={TASK_COMPANY_PROSE, TASK_SECTION_SNAPSHOT, TASK_TOP_SNAPSHOT, TASK_FOLLOWUP, TASK_DEEP_RESEARCH},
     output_model=ProseRow,
 )
 async def get_latest_prose(
@@ -128,3 +130,35 @@ async def get_latest_prose(
         data_through=row.data_through,  # type: ignore[union-attr]
         sources=sources,
     )
+
+
+@tool(
+    name="get_latest_analysis",
+    description="Recent rows from the type-tagged analysis table (sector/industry/macro/summary).",
+    tasks={TASK_SECTION_SNAPSHOT, TASK_TOP_SNAPSHOT, TASK_FOLLOWUP, TASK_DEEP_RESEARCH},
+    output_model=AnalysisRow,
+)
+async def get_latest_analysis(
+    session: AsyncSession,
+    *,
+    type: str | None = None,
+    limit: int = 10,
+) -> list[AnalysisRow]:
+    """Read the broader ``analysis`` outputs, newest first. ``type`` filters to one of
+    fundamental|sentimental|event_driven|summary; omit it for the latest across all types."""
+    stmt = select(Analysis)
+    if type is not None:
+        stmt = stmt.where(Analysis.type == AnalysisType(type))
+    stmt = stmt.order_by(Analysis.generated_at.desc()).limit(limit)
+    rows = (await session.execute(stmt)).scalars().all()
+    return [
+        AnalysisRow(
+            analysis_id=r.id,
+            type=r.type.value,
+            generated_at=r.generated_at,
+            content=r.content.model_dump() if r.content is not None else None,
+            news_event_ids=list(r.supporting_inputs.news_event_ids) if r.supporting_inputs else [],
+            model_name=r.model_name,
+        )
+        for r in rows
+    ]

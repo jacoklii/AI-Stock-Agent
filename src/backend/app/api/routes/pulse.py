@@ -7,13 +7,14 @@ on-demand ``POST /brief/run`` trigger is deferred until the brief workflow lands
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import ro_session
 from app.api.schemas import BriefInstrumentOut, BriefStateOut
 from app.providers.market import get_market_provider
 from app.tools.research import get_brief_state
+from app.workflows import market_pulse
 
 router = APIRouter(tags=["brief"])
 
@@ -29,9 +30,6 @@ async def brief_state(session: AsyncSession = Depends(ro_session)) -> BriefState
 
 @router.post("/brief/run")
 async def run_brief() -> dict:
-    """On-demand market brief trigger. Deferred — the brief workflow is not implemented yet;
-    the brief is otherwise regenerated live via ``GET /brief/state``."""
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="brief workflow not implemented yet",
-    )
+    """On-demand market brief: generate the snapshot and deliver it now (iMessage + inbox)."""
+    await market_pulse.run(slot="on_demand")
+    return {"status": "ok"}

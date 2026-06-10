@@ -13,13 +13,27 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.api.routes import companies, home, inbox, preferences, pulse, research, sectors
+from app.config import get_settings
 from app.db.session import engine
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    yield
-    await engine.dispose()  # release the pool on shutdown
+    # Start breadth automation only when enabled (off in dev/tests). The scheduler fires the
+    # scheduled workflows; everything else stays callable on demand from the API.
+    scheduler = None
+    if get_settings().enable_scheduler:
+        from app.scheduler import start
+
+        scheduler = start()
+    try:
+        yield
+    finally:
+        if scheduler is not None:
+            from app.scheduler import shutdown
+
+            shutdown(scheduler)
+        await engine.dispose()  # release the pool on shutdown
 
 
 app = FastAPI(

@@ -14,9 +14,9 @@ from sqlalchemy import select
 from app.agents.researcher import get_researcher
 from app.db.models.companies import Industry
 from app.db.models.user import UserPreferences
-from app.db.payloads import DigestSection
 from app.db.session import readonly_session
 from app.tools.registry import TASK_SECTION_SNAPSHOT
+from app.workflows.digest_types import DigestSection
 from app.workflows.runtime import run_task
 from app.workflows.triggers import WF_SECTOR_RESEARCH
 

@@ -15,9 +15,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import BRIEF_CORE
+from app.db.models.analysis import Analysis
 from app.db.models.companies import Company
 from app.db.models.market_data import Financial, Price
 from app.db.models.news import NewsEvent
+from app.db.models.state import ResearchState
 from app.db.models.user import UserPreferences
 from app.db.payloads import BriefInstrument
 from app.providers.embeddings import EmbeddingsProvider
@@ -25,6 +27,7 @@ from app.providers.market import MarketDataProvider
 from app.tools.registry import (
     TASK_ARTICLE_SUMMARY,
     TASK_COMPANY_PROSE,
+    TASK_DEEP_RESEARCH,
     TASK_FOLLOWUP,
     TASK_PULSE_SNAPSHOT,
     TASK_SECTION_SNAPSHOT,
@@ -40,6 +43,7 @@ from app.tools.tool_schema import (
     ScreenCandidate,
     ScreenFilters,
     SimilarEvent,
+    SimilarHit,
 )
 
 
@@ -50,7 +54,7 @@ def _f(value: object) -> float | None:
 @tool(
     name="get_company",
     description="Company identity + coverage tier, by ticker or company_id.",
-    tasks={TASK_COMPANY_PROSE, TASK_SECTION_SNAPSHOT, TASK_TOP_SNAPSHOT, TASK_FOLLOWUP},
+    tasks={TASK_COMPANY_PROSE, TASK_SECTION_SNAPSHOT, TASK_TOP_SNAPSHOT, TASK_FOLLOWUP, TASK_DEEP_RESEARCH},
     output_model=CompanyResult,
 )
 async def get_company(
@@ -83,7 +87,7 @@ async def get_company(
 @tool(
     name="get_financials",
     description="Financial-statement rows for a company, newest period first.",
-    tasks={TASK_COMPANY_PROSE, TASK_FOLLOWUP},
+    tasks={TASK_COMPANY_PROSE, TASK_FOLLOWUP, TASK_DEEP_RESEARCH},
     output_model=FinancialRow,
 )
 async def get_financials(
@@ -118,7 +122,7 @@ async def get_financials(
 @tool(
     name="get_price_history",
     description="Stored daily OHLCV for a company over an optional date range.",
-    tasks={TASK_COMPANY_PROSE, TASK_PULSE_SNAPSHOT, TASK_FOLLOWUP},
+    tasks={TASK_COMPANY_PROSE, TASK_PULSE_SNAPSHOT, TASK_FOLLOWUP, TASK_DEEP_RESEARCH},
     output_model=PriceRow,
 )
 async def get_price_history(
@@ -161,6 +165,7 @@ async def get_price_history(
         TASK_COMPANY_PROSE,
         TASK_TOP_SNAPSHOT,
         TASK_FOLLOWUP,
+        TASK_DEEP_RESEARCH,
     },
     output_model=NewsEventResult,
 )
@@ -198,7 +203,7 @@ async def get_news_events(
 @tool(
     name="screen_stocks",
     description="Parameterized screen over companies; ranked candidate list.",
-    tasks={TASK_SECTION_SNAPSHOT, TASK_FOLLOWUP},
+    tasks={TASK_SECTION_SNAPSHOT, TASK_FOLLOWUP, TASK_DEEP_RESEARCH},
     input_model=ScreenFilters,
     output_model=ScreenCandidate,
 )
@@ -310,3 +315,56 @@ async def search_similar_events(
         )
         for event, dist in rows
     ]
+
+
+# Per-scope mapping for the generalized semantic search: model + how to project a hit.
+_SIMILAR_SCOPES = {
+    "news": (NewsEvent, lambda r: (r.headline, r.summary)),
+    "analysis": (Analysis, lambda r: (f"{r.type.value} analysis", None)),
+    "state": (ResearchState, lambda r: (r.topic, r.findings)),
+}
+
+
+@tool(
+    name="search_similar",
+    description="Semantic search over stored summaries, analysis, or research state (cosine).",
+    tasks={TASK_FOLLOWUP, TASK_DEEP_RESEARCH},
+    output_model=SimilarHit,
+)
+async def search_similar(
+    session: AsyncSession,
+    embeddings_provider: EmbeddingsProvider,
+    *,
+    query_text: str,
+    scope: str = "news",
+    k: int = 10,
+) -> list[SimilarHit]:
+    """Embed ``query_text`` with the fixed model and rank one embedded surface by cosine
+    distance. ``scope`` is one of news | analysis | state. Only rows embedded with the same
+    model are comparable."""
+    if scope not in _SIMILAR_SCOPES:
+        raise ValueError(f"scope must be one of {list(_SIMILAR_SCOPES)}")
+    model, project = _SIMILAR_SCOPES[scope]
+    embedded = await embeddings_provider.embed_query(query_text)
+    distance = model.embedding.cosine_distance(embedded.vector)
+    stmt = (
+        select(model, distance.label("distance"))
+        .where(model.embedding.is_not(None))
+        .where(model.embedding_model == embedded.model)
+        .order_by(distance.asc())
+        .limit(k)
+    )
+    rows = (await session.execute(stmt)).all()
+    out: list[SimilarHit] = []
+    for row, dist in rows:
+        title, summary = project(row)
+        out.append(
+            SimilarHit(
+                ref_type=scope,
+                ref_id=row.id,
+                title=title,
+                summary=summary,
+                similarity=1.0 - float(dist),
+            )
+        )
+    return out

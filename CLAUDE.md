@@ -28,7 +28,7 @@ Always-on research partner for stock and market intelligence. The agent
 - Four model kinds, kept separate: ORM (`db/models/`), JSONB payloads (`db/payloads.py`), tool DTOs (`tools/tool_schema.py`), API wire models (`api/schemas.py`).
 - Every JSONB column has a Pydantic model in `db/payloads.py`, bound via `PydanticJSONB`.
 - Migrations own all DDL. `alembic check` must pass after any model change.
-- Constants in `app/config.py`; seed data in `scripts/seed.py`, never inside `app/`.
+- Constants in `app/config.py`, never inside `app/` modules; one-off ops scripts go in `scripts/`.
 - `scheduler/` may import `workflows/`, never the reverse.
 - Failures surface in the `jobs` table — no silent partial successes.
 - Add complexity only when current behavior measurably fails.
@@ -51,8 +51,7 @@ alembic upgrade head
 alembic revision --autogenerate -m "describe change"
 alembic check
 
-# Seed + run
-python -m scripts.seed          # idempotent
+# Run
 uvicorn app.main:app --reload   # FastAPI on :8000
 
 # Tests (Postgres must be up)
@@ -71,29 +70,42 @@ ai-stock-agent/
 ├── docker-compose.yml
 ├── .env                    # secrets, never committed
 ├── .env.example
-└── src/backend/
-    ├── alembic.ini
-    ├── pyproject.toml
-    ├── scripts/seed.py
-    ├── tests/
-    └── app/
-        ├── main.py
-        ├── config.py           # PULSE_CORE, DEFAULT_THRESHOLDS, model names
-        ├── db/
-        │   ├── base.py         # PydanticJSONB, Base
-        │   ├── enums.py        # closed PG enum sets
-        │   ├── payloads.py     # Pydantic models for JSONB columns
-        │   ├── session.py      # readonly_session(), SessionLocal
-        │   ├── models/         # companies, market_data, news, analysis, delivery, user, jobs
-        │   └── migrations/
-        ├── providers/          # market, news, embeddings, llm, notifier
-        ├── tools/              # registry, tool_schema, research, analysis, delivery, invoke
-        ├── agents/researcher/  # agent.py, schemas.py, prompts/*.md
-        ├── analysis/           # fundamental_score.py, sentiment_analysis.py
-        ├── workflows/          # runtime, concurrency, triggers, registry, 8 pipelines
-        ├── scheduler/          # schedule.py
-        ├── mcp_server/         # server.py
-        └── api/                # deps, schemas, routes/
+└── src/
+    ├── .env.example
+    ├── backend/
+    │   ├── alembic.ini
+    │   ├── pyproject.toml
+    │   ├── scripts/                 # one-off ops scripts (e.g. embedding backfills)
+    │   ├── tests/
+    │   └── app/
+    │       ├── main.py
+    │       ├── config.py           # PULSE_CORE, DEFAULT_THRESHOLDS, model names
+    │       ├── utils.py            # Helper functions, no classes
+    │       ├── db/
+    │       │   ├── base.py         # PydanticJSONB, Base
+    │       │   ├── enums.py        # closed PG enum sets
+    │       │   ├── payloads.py     # Pydantic models for JSONB columns
+    │       │   ├── session.py      # readonly_session(), SessionLocal
+    │       │   ├── models/         # companies, market_data, news, analysis, delivery, user, jobs
+    │       │   └── migrations/
+    │       ├── providers/          # market, news, embeddings, llm, notifier
+    │       ├── tools/              # registry, tool_schema, research, analysis, delivery, invoke
+    │       ├── agents/researcher/  # agent.py, schemas.py, prompts/*.md
+    │       ├── analysis/           # fundamental_score.py, sentiment_analysis.py
+    │       ├── workflows/          # runtime, concurrency, triggers, registry, 8 pipelines
+    │       ├── scheduler/          # schedule.py, runner.py (APScheduler)
+    │       ├── mcp_server/         # server.py
+    │       └── api/                # deps, schemas, routes/
+    ├── frontend/
+    │   ├── api/                                   # generated client from FastAPI OpenAPI
+    │   ├── components/
+    │   ├── lib/                                   # formatters, hooks, utilities
+    │   ├── public/
+    │   └── views/
+    └── data/                                      # actual state — gitignored
+        ├── postgres/                              # local DB volume (docker-compose mounts here)
+        └── snapshots/                             # ad-hoc pg_dump exports
+
 ```
 
 ## Safety & security

@@ -148,3 +148,80 @@ class DedupeResult(BaseModel):
     already_sent: bool
     channel: Channel | None = None
     sent_at: datetime | None = None
+
+
+class SendReceiptResult(BaseModel):
+    """Outcome of a send tool: the channel, whether it went out, and whether dedupe skipped it."""
+
+    channel: Channel
+    sent: bool
+    deduped: bool = False
+    detail: str | None = None
+
+
+# --- Analysis (broader read) -------------------------------------------------
+
+
+class AnalysisRow(BaseModel):
+    """A row from the type-tagged ``analysis`` table (sector/industry/macro/summary read)."""
+
+    analysis_id: int
+    type: str
+    generated_at: datetime
+    content: dict | None
+    news_event_ids: list[int]
+    model_name: str
+
+
+# --- Semantic search (any embedded surface) ----------------------------------
+
+
+class SimilarHit(BaseModel):
+    """A semantic-search hit across news / analysis / research-state, with cosine similarity."""
+
+    ref_type: str  # "news" | "analysis" | "state"
+    ref_id: int
+    title: str
+    summary: str | None
+    similarity: float
+
+
+# --- Web / SEC / cache (deep-research external reads) ------------------------
+
+
+class WebContent(BaseModel):
+    url: str
+    content: str
+    from_cache: bool
+
+
+class SecFiling(BaseModel):
+    form: str
+    filed_at: date
+    url: str
+    content: str
+    from_cache: bool
+
+
+class CacheEntry(BaseModel):
+    url: str
+    content: str
+    fetched_at: datetime
+    age_seconds: int
+    expired: bool
+
+
+# --- Research state ----------------------------------------------------------
+
+
+class ResearchStateResult(BaseModel):
+    """A research-state row — the agent's working memory for one session."""
+
+    state_id: int
+    topic: str
+    status: str
+    current_task: str | None
+    findings: str | None
+    open_questions: str | None
+    source_ids: list[int]
+    source_urls: list[str]
