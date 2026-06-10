@@ -28,7 +28,7 @@ Always-on research partner for stock and market intelligence. The agent
 - Four model kinds, kept separate: ORM (`db/models/`), JSONB payloads (`db/payloads.py`), tool DTOs (`tools/tool_schema.py`), API wire models (`api/schemas.py`).
 - Every JSONB column has a Pydantic model in `db/payloads.py`, bound via `PydanticJSONB`.
 - Migrations own all DDL. `alembic check` must pass after any model change.
-- Constants in `app/config.py`; seed data in `scripts/seed.py`, never inside `app/`.
+- Constants in `app/config.py`, never inside `app/` modules; one-off ops scripts go in `scripts/`.
 - `scheduler/` may import `workflows/`, never the reverse.
 - Failures surface in the `jobs` table — no silent partial successes.
 - Add complexity only when current behavior measurably fails.
@@ -51,8 +51,7 @@ alembic upgrade head
 alembic revision --autogenerate -m "describe change"
 alembic check
 
-# Seed + run
-python -m scripts.seed          # idempotent
+# Run
 uvicorn app.main:app --reload   # FastAPI on :8000
 
 # Tests (Postgres must be up)
@@ -76,7 +75,7 @@ ai-stock-agent/
     ├── backend/
     │   ├── alembic.ini
     │   ├── pyproject.toml
-    │   ├── scripts/seed.py
+    │   ├── scripts/                 # one-off ops scripts (e.g. embedding backfills)
     │   ├── tests/
     │   └── app/
     │       ├── main.py
