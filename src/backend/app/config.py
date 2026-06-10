@@ -44,6 +44,12 @@ class Settings(BaseSettings):
     # News provider (Finnhub). Free-tier REST; depth-driven coverage.
     finnhub_api_key: str | None = None
 
+    # Web search (Tavily REST). Single credential for the deep-research web tools.
+    web_search_api_key: str | None = None
+
+    # SEC EDGAR is public and keyless but requires a descriptive User-Agent on every request.
+    sec_user_agent: str = "ai-stock-agent (contact: set SEC_USER_AGENT)"
+
     # Notifier. Email via SMTP; the brief pulse goes to iMessage (AppleScript on the host) or
     # WhatsApp. Addresses default to UserPreferences.channels; these are the transport creds.
     smtp_host: str | None = None

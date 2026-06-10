@@ -30,6 +30,7 @@ TASK_COMPANY_PROSE = "company_prose"
 TASK_PULSE_SNAPSHOT = "pulse_snapshot"
 TASK_TOP_SNAPSHOT = "top_snapshot"
 TASK_FOLLOWUP = "followup"
+TASK_DEEP_RESEARCH = "deep_research"
 
 
 @dataclass(frozen=True)
@@ -47,6 +48,10 @@ class ToolSpec:
     tasks: frozenset[str]
     input_model: type | None = None
     output_model: type | None = None
+    # Read tools (the default) are invoked under a read-only session and physically cannot
+    # write. The few predefined write tools (research-state, cache) set this; ``invoke_tool``
+    # hands them a writable session. No production-data table has a write tool.
+    writes: bool = False
 
 
 @dataclass
@@ -87,6 +92,7 @@ def tool(
     tasks: set[str] | frozenset[str],
     input_model: type | None = None,
     output_model: type | None = None,
+    writes: bool = False,
 ) -> Callable[[Callable[..., object]], Callable[..., object]]:
     """Register a function as a predefined tool. Returns the function unchanged, so tools stay
     ordinary callables that workflows/tests can also call directly."""
@@ -100,6 +106,7 @@ def tool(
                 tasks=frozenset(tasks),
                 input_model=input_model,
                 output_model=output_model,
+                writes=writes,
             )
         )
         return fn

@@ -75,7 +75,7 @@ def triggers_for_kind(kind: TriggerKind) -> list[Trigger]:
 
 
 # --- Declared triggers --------------------------------------------------------
-# Cron times are UTC (all timestamps in the system are UTC). Pulse slots map to PulseSlot.
+# Cron times are UTC (all timestamps in the system are UTC). Brief slots are plain strings.
 
 register_trigger(Trigger(
     name="digest_daily",
