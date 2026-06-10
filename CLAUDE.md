@@ -71,29 +71,42 @@ ai-stock-agent/
 ├── docker-compose.yml
 ├── .env                    # secrets, never committed
 ├── .env.example
-└── src/backend/
-    ├── alembic.ini
-    ├── pyproject.toml
-    ├── scripts/seed.py
-    ├── tests/
-    └── app/
-        ├── main.py
-        ├── config.py           # PULSE_CORE, DEFAULT_THRESHOLDS, model names
-        ├── db/
-        │   ├── base.py         # PydanticJSONB, Base
-        │   ├── enums.py        # closed PG enum sets
-        │   ├── payloads.py     # Pydantic models for JSONB columns
-        │   ├── session.py      # readonly_session(), SessionLocal
-        │   ├── models/         # companies, market_data, news, analysis, delivery, user, jobs
-        │   └── migrations/
-        ├── providers/          # market, news, embeddings, llm, notifier
-        ├── tools/              # registry, tool_schema, research, analysis, delivery, invoke
-        ├── agents/researcher/  # agent.py, schemas.py, prompts/*.md
-        ├── analysis/           # fundamental_score.py, sentiment_analysis.py
-        ├── workflows/          # runtime, concurrency, triggers, registry, 8 pipelines
-        ├── scheduler/          # schedule.py
-        ├── mcp_server/         # server.py
-        └── api/                # deps, schemas, routes/
+└── src/
+    ├── .env.example
+    ├── backend/
+    │   ├── alembic.ini
+    │   ├── pyproject.toml
+    │   ├── scripts/seed.py
+    │   ├── tests/
+    │   └── app/
+    │       ├── main.py
+    │       ├── config.py           # PULSE_CORE, DEFAULT_THRESHOLDS, model names
+    │       ├── utils.py            # Helper functions, no classes
+    │       ├── db/
+    │       │   ├── base.py         # PydanticJSONB, Base
+    │       │   ├── enums.py        # closed PG enum sets
+    │       │   ├── payloads.py     # Pydantic models for JSONB columns
+    │       │   ├── session.py      # readonly_session(), SessionLocal
+    │       │   ├── models/         # companies, market_data, news, analysis, delivery, user, jobs
+    │       │   └── migrations/
+    │       ├── providers/          # market, news, embeddings, llm, notifier
+    │       ├── tools/              # registry, tool_schema, research, analysis, delivery, invoke
+    │       ├── agents/researcher/  # agent.py, schemas.py, prompts/*.md
+    │       ├── analysis/           # fundamental_score.py, sentiment_analysis.py
+    │       ├── workflows/          # runtime, concurrency, triggers, registry, 8 pipelines
+    │       ├── scheduler/          # schedule.py
+    │       ├── mcp_server/         # server.py
+    │       └── api/                # deps, schemas, routes/
+    ├── frontend/
+    │   ├── api/                                   # generated client from FastAPI OpenAPI
+    │   ├── components/
+    │   ├── lib/                                   # formatters, hooks, utilities
+    │   ├── public/
+    │   └── views/
+    └── data/                                      # actual state — gitignored
+        ├── postgres/                              # local DB volume (docker-compose mounts here)
+        └── snapshots/                             # ad-hoc pg_dump exports
+
 ```
 
 ## Safety & security
