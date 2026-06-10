@@ -24,7 +24,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from app.agents.budget import Budget
 from app.agents.researcher import schemas
@@ -200,7 +200,26 @@ class Researcher:
 
             submit_block = next((b for b in tool_uses if b.name == submit["name"]), None)
             if submit_block is not None:
-                out = spec.output_model.model_validate(submit_block.input)
+                try:
+                    out = spec.output_model.model_validate(submit_block.input)
+                except ValidationError as exc:
+                    if force_submit:  # a hard stop stays a visible failure in `tasks`
+                        raise
+                    # Self-correction: feed the validation error back and let the model resubmit.
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "tool_result",
+                                    "tool_use_id": submit_block.id,
+                                    "content": f"Invalid result, fix and resubmit: {exc}",
+                                    "is_error": True,
+                                }
+                            ],
+                        }
+                    )
+                    continue
                 # Reflection: bounce an ungrounded result back for citations (unless we must stop).
                 if not force_submit and grounding_nudges < _MAX_GROUNDING_NUDGES and _needs_grounding(out):
                     grounding_nudges += 1
@@ -235,7 +254,12 @@ class Researcher:
         spec = allowlist.get(name)
         if spec is None:  # the registry allowlist is the stop — refuse anything off it
             return {"error": f"tool {name!r} is not permitted for this task"}
-        return await invoke_tool(spec, args)
+        try:
+            return await invoke_tool(spec, args)
+        except Exception as exc:
+            # Self-correction: surface the failure (bad args, missing row, provider error) as a
+            # tool result so the model can adjust, instead of crashing the whole task.
+            return {"error": f"{type(exc).__name__}: {exc}"}
 
 
 @lru_cache(maxsize=1)

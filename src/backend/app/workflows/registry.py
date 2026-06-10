@@ -39,7 +39,9 @@ WORKFLOWS: dict[str, Callable[..., Awaitable[object]]] = {
     WF_SECTOR_RESEARCH: sector_research.run,
     WF_DAILY_DIGEST: daily_digest.run,
     WF_SIGNIFICANCE_RECHECK: significance_recheck.run,
-    WF_DEEP_RESEARCH: deep_research.run,
+    # The registry serves the scheduler/trigger path, where deep research is self-directed;
+    # chat/API call ``deep_research.run`` directly with the user's query.
+    WF_DEEP_RESEARCH: deep_research.run_autonomous,
 }
 
 

@@ -136,3 +136,10 @@ register_trigger(Trigger(
     description="Interface request: open a bounded research session, state-first then external.",
     source="interface",
 ))
+register_trigger(Trigger(
+    name="deep_research_daily",
+    kind=TriggerKind.scheduled,
+    workflow=WF_DEEP_RESEARCH,
+    description="Self-directed session: resume unfinished work or pick a focus from breadth signal; rests when nothing is material.",
+    cron="0 14 * * 1-5",
+))

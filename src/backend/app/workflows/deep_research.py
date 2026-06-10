@@ -17,6 +17,8 @@ findings embedded for future retrieval) even on failure, so it never holds a slo
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
 from sqlalchemy import func, select
 
 from app.agents.budget import Budget, remaining_weekly_budget
@@ -24,7 +26,10 @@ from app.agents.researcher import TASKS, get_researcher
 from app.config import get_settings
 from app.db.enums import AnalysisType, StateStatus
 from app.db.models.analysis import Analysis
+from app.db.models.companies import Industry
+from app.db.models.news import NewsEvent
 from app.db.models.state import ResearchState
+from app.db.models.user import UserPreferences
 from app.db.payloads import AnalysisContent, AnalysisSupportingInputs
 from app.db.session import SessionLocal, readonly_session
 from app.providers.embeddings import get_embeddings_provider
@@ -44,6 +49,30 @@ async def _active_count() -> int:
                 .where(ResearchState.status == StateStatus.open)
             )
         ).scalar_one()
+
+
+async def _user_context() -> dict:
+    """The user's declared interests — so the agent judges materiality like a partner."""
+    async with readonly_session() as session:
+        prefs = (
+            await session.execute(select(UserPreferences).where(UserPreferences.id == 1))
+        ).scalar_one_or_none()
+        if prefs is None:
+            return {}
+        industries: list[str] = []
+        if prefs.critical_industries:
+            industries = list(
+                (
+                    await session.execute(
+                        select(Industry.name).where(Industry.id.in_(prefs.critical_industries))
+                    )
+                ).scalars()
+            )
+        return {
+            "interested_sectors": list(prefs.interested_sectors),
+            "critical_industries": industries,
+            "brief_stocks": list(prefs.brief_user),
+        }
 
 
 async def _recall(query: str) -> dict:
@@ -91,12 +120,14 @@ async def run(
     initiated_by: str = "schedule",
     parent_state_id: int | None = None,
     resume_state_id: int | None = None,
+    candidates: dict | None = None,
 ) -> dict:
     """Run one bounded, budget-paced research session.
 
     ``resume_state_id`` continues an existing session (memory); otherwise a new one is opened
     (subject to the active-session cap). ``initiated_by="user"`` returns the answer without
-    auto-promoting; autonomous triggers promote findings on close."""
+    auto-promoting; autonomous triggers promote findings on close. ``candidates`` carries the
+    material signals of a self-directed session — the agent picks its own focus from them."""
     settings = get_settings()
 
     # Budget gate (self-pacing): decline before spending anything if the weekly budget is spent.
@@ -130,19 +161,22 @@ async def run(
     ) as task:
         try:
             recalled = await _recall(query)
-            out = await get_researcher().run_task(
-                TASK_DEEP_RESEARCH,
-                inputs={
-                    "query": query,
-                    "topic": topic,
-                    "state_id": state_id,
-                    "company_id": company_id,
-                    "industry_id": industry_id,
-                    **memory,
-                    **recalled,
-                },
-                budget=budget,
-            )
+            inputs = {
+                "query": query,
+                "topic": topic,
+                "state_id": state_id,
+                "company_id": company_id,
+                "industry_id": industry_id,
+                # Surroundings: the user's goals and the budget posture, so the agent can
+                # judge materiality and self-pace.
+                "user_context": await _user_context(),
+                "budget_remaining": remaining,
+                **memory,
+                **recalled,
+            }
+            if candidates is not None:
+                inputs["candidates"] = candidates
+            out = await get_researcher().run_task(TASK_DEEP_RESEARCH, inputs=inputs, budget=budget)
         finally:
             # Record spend and close the session (embedding its findings) even on failure.
             task.tokens = budget.spent
@@ -154,3 +188,83 @@ async def run(
             task.count("promoted")
         task.message("answered")
         return {"blocked": False, "answer": out.answer, "sources": out.sources, "state_id": state_id}
+
+
+_AUTONOMOUS_QUERY = (
+    "Self-directed session: pick the single most material question from `candidates` and research it."
+)
+
+
+async def _candidates() -> dict:
+    """Perception: the material signals breadth has surfaced — what is worth researching now."""
+    now = datetime.now(timezone.utc)
+    async with readonly_session() as session:
+        # Events a recent analysis already drew on are covered — don't research them again.
+        covered: set[int] = set()
+        for si in (
+            await session.execute(
+                select(Analysis.supporting_inputs).where(
+                    Analysis.generated_at >= now - timedelta(days=7)
+                )
+            )
+        ).scalars():
+            if si is not None:
+                covered.update(si.news_event_ids)
+        events = (
+            await session.execute(
+                select(NewsEvent.id, NewsEvent.headline, NewsEvent.significance)
+                .where(NewsEvent.published_at >= now - timedelta(hours=24))
+                .order_by(NewsEvent.significance.desc())
+                .limit(10)
+            )
+        ).all()
+        questions = (
+            await session.execute(
+                select(ResearchState.topic, ResearchState.open_questions)
+                .where(ResearchState.status == StateStatus.closed)
+                .where(ResearchState.open_questions.is_not(None))
+                .order_by(ResearchState.closed_at.desc())
+                .limit(5)
+            )
+        ).all()
+    return {
+        "significant_events": [
+            {"news_event_id": e.id, "headline": e.headline, "significance": e.significance}
+            for e in events
+            if e.id not in covered
+        ],
+        "open_questions": [
+            {"topic": q.topic, "questions": q.open_questions} for q in questions
+        ],
+    }
+
+
+async def _oldest_open_session() -> tuple[int, str] | None:
+    async with readonly_session() as session:
+        row = (
+            await session.execute(
+                select(ResearchState.id, ResearchState.topic)
+                .where(ResearchState.status == StateStatus.open)
+                .order_by(ResearchState.opened_at)
+                .limit(1)
+            )
+        ).first()
+    return (row.id, row.topic) if row is not None else None
+
+
+async def run_autonomous() -> dict:
+    """The scheduled, self-directed session — the agent initiates, decides, or rests.
+
+    Resumes the oldest still-open session first (finish what was started); otherwise gathers
+    candidates from breadth signal and lets the agent choose its own focus. When nothing is
+    material, the researcher rests — per the mental model, it only works when there is something
+    worth working on."""
+    open_row = await _oldest_open_session()
+    if open_row is not None:
+        state_id, topic = open_row
+        return await run(query=topic, initiated_by="schedule", resume_state_id=state_id)
+
+    candidates = await _candidates()
+    if not candidates["significant_events"] and not candidates["open_questions"]:
+        return {"skipped": True, "reason": "no material signal"}
+    return await run(query=_AUTONOMOUS_QUERY, initiated_by="schedule", candidates=candidates)
