@@ -33,7 +33,7 @@ def test_brief_run_invokes_workflow(monkeypatch) -> None:
 
 
 def test_research_followup_invokes_workflow(monkeypatch) -> None:
-    async def _stub(*, query, company_id=None, industry_id=None, initiated_by="schedule"):
+    async def _stub(*, query, company_id=None, industry_id=None, initiated_by="schedule", resume_state_id=None):
         return {"blocked": False, "answer": f"re: {query}", "sources": [1, 2]}
 
     monkeypatch.setattr(deep_research, "run", _stub)

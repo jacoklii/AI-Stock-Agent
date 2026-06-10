@@ -144,6 +144,8 @@ class FollowupRequest(BaseModel):
     query: str
     company_id: int | None = None
     industry_id: int | None = None
+    # Continue an existing research session instead of opening a new one.
+    resume_state_id: int | None = None
 
 
 class FollowupResponse(BaseModel):

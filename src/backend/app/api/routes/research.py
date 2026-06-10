@@ -23,6 +23,7 @@ async def followup(body: FollowupRequest) -> FollowupResponse:
         company_id=body.company_id,
         industry_id=body.industry_id,
         initiated_by="user",
+        resume_state_id=body.resume_state_id,
     )
     if result.get("blocked"):
         return FollowupResponse(

@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.enums import StateStatus
 from app.db.models.state import ResearchState
 from app.db.payloads import StateSources
+from app.providers.embeddings import EmbeddingsProvider
 from app.tools.registry import TASK_DEEP_RESEARCH, tool
 from app.tools.tool_schema import ResearchStateResult
 
@@ -102,13 +103,21 @@ async def update_research(
     output_model=ResearchStateResult,
     writes=True,
 )
-async def close_research(session: AsyncSession, *, state_id: int) -> ResearchStateResult | None:
+async def close_research(
+    session: AsyncSession, embeddings_provider: EmbeddingsProvider, *, state_id: int
+) -> ResearchStateResult | None:
+    """Close the session and embed its findings into ``state.embedding`` so the closed session is
+    semantically retrievable by future research (rolling long-term memory)."""
     row = (await session.execute(select(ResearchState).where(ResearchState.id == state_id))).scalar_one_or_none()
     if row is None:
         return None
     row.status = StateStatus.closed
     row.current_task = None
     row.closed_at = datetime.now(timezone.utc)
+    if row.findings:
+        embedded = await embeddings_provider.embed_query(row.findings)
+        row.embedding = embedded.vector
+        row.embedding_model = embedded.model
     await session.commit()
     return _result(row)
 
