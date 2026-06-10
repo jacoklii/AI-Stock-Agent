@@ -54,7 +54,7 @@ def _f(value: object) -> float | None:
 @tool(
     name="get_company",
     description="Company identity + coverage tier, by ticker or company_id.",
-    tasks={TASK_COMPANY_PROSE, TASK_SECTION_SNAPSHOT, TASK_TOP_SNAPSHOT, TASK_FOLLOWUP},
+    tasks={TASK_COMPANY_PROSE, TASK_SECTION_SNAPSHOT, TASK_TOP_SNAPSHOT, TASK_FOLLOWUP, TASK_DEEP_RESEARCH},
     output_model=CompanyResult,
 )
 async def get_company(
@@ -87,7 +87,7 @@ async def get_company(
 @tool(
     name="get_financials",
     description="Financial-statement rows for a company, newest period first.",
-    tasks={TASK_COMPANY_PROSE, TASK_FOLLOWUP},
+    tasks={TASK_COMPANY_PROSE, TASK_FOLLOWUP, TASK_DEEP_RESEARCH},
     output_model=FinancialRow,
 )
 async def get_financials(
@@ -122,7 +122,7 @@ async def get_financials(
 @tool(
     name="get_price_history",
     description="Stored daily OHLCV for a company over an optional date range.",
-    tasks={TASK_COMPANY_PROSE, TASK_PULSE_SNAPSHOT, TASK_FOLLOWUP},
+    tasks={TASK_COMPANY_PROSE, TASK_PULSE_SNAPSHOT, TASK_FOLLOWUP, TASK_DEEP_RESEARCH},
     output_model=PriceRow,
 )
 async def get_price_history(
@@ -165,6 +165,7 @@ async def get_price_history(
         TASK_COMPANY_PROSE,
         TASK_TOP_SNAPSHOT,
         TASK_FOLLOWUP,
+        TASK_DEEP_RESEARCH,
     },
     output_model=NewsEventResult,
 )
@@ -202,7 +203,7 @@ async def get_news_events(
 @tool(
     name="screen_stocks",
     description="Parameterized screen over companies; ranked candidate list.",
-    tasks={TASK_SECTION_SNAPSHOT, TASK_FOLLOWUP},
+    tasks={TASK_SECTION_SNAPSHOT, TASK_FOLLOWUP, TASK_DEEP_RESEARCH},
     input_model=ScreenFilters,
     output_model=ScreenCandidate,
 )

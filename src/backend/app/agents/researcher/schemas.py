@@ -51,3 +51,14 @@ class FollowupOut(BaseModel):
 
     answer: str
     sources: list[int] = Field(default_factory=list)
+
+
+class DeepResearchOut(BaseModel):
+    """The deliverable of a bounded deep-research session: the synthesized answer plus the
+    findings and open questions to promote into the durable record, and the source events drawn
+    on. Observations + reasoning, never a decision or valuation call."""
+
+    answer: str
+    findings: str = ""
+    open_questions: str = ""
+    sources: list[int] = Field(default_factory=list)

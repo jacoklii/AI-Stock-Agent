@@ -13,18 +13,18 @@ from collections.abc import Awaitable, Callable
 from app.workflows import (
     company_rescore,
     daily_digest,
+    deep_research,
     market_pulse,
     news_ingest,
-    on_demand,
     prose_regeneration,
     sector_research,
     significance_recheck,
 )
 from app.workflows.triggers import (
     WF_DAILY_DIGEST,
+    WF_DEEP_RESEARCH,
     WF_MARKET_PULSE,
     WF_NEWS_INGEST,
-    WF_ON_DEMAND,
     WF_PROSE_REGEN,
     WF_RESCORE,
     WF_SECTOR_RESEARCH,
@@ -39,7 +39,7 @@ WORKFLOWS: dict[str, Callable[..., Awaitable[object]]] = {
     WF_SECTOR_RESEARCH: sector_research.run,
     WF_DAILY_DIGEST: daily_digest.run,
     WF_SIGNIFICANCE_RECHECK: significance_recheck.run,
-    WF_ON_DEMAND: on_demand.run,
+    WF_DEEP_RESEARCH: deep_research.run,
 }
 
 

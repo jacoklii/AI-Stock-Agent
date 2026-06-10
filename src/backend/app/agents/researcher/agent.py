@@ -27,12 +27,13 @@ from typing import Any
 from pydantic import BaseModel
 
 from app.agents.researcher import schemas
-from app.config import MODEL_HAIKU, MODEL_OPUS, MODEL_SONNET, get_settings
+from app.config import DEEP_RESEARCH_MAX_ITERS, MODEL_HAIKU, MODEL_OPUS, MODEL_SONNET, get_settings
 from app.providers.llm import LLMProvider, get_llm_provider
 from app.tools.invoke import invoke_tool, tool_json_schema
 from app.tools.registry import (
     TASK_ARTICLE_SUMMARY,
     TASK_COMPANY_PROSE,
+    TASK_DEEP_RESEARCH,
     TASK_FOLLOWUP,
     TASK_PULSE_SNAPSHOT,
     TASK_SECTION_SNAPSHOT,
@@ -53,6 +54,9 @@ class TaskSpec:
     prompt_file: str
     model: str
     output_model: type[BaseModel]
+    # Per-task loop bound; ``None`` falls back to the agent default (``agent_max_tool_iters``).
+    # Deep research self-paces over many steps, so it sets a larger one.
+    max_iters: int | None = None
 
 
 # Model choice mirrors the architecture: Haiku for high-volume ingest, Sonnet/Opus for synthesis.
@@ -77,6 +81,13 @@ TASKS: dict[str, TaskSpec] = {
     ),
     TASK_FOLLOWUP: TaskSpec(
         TASK_FOLLOWUP, "prompt_followup.md", MODEL_SONNET, schemas.FollowupOut
+    ),
+    TASK_DEEP_RESEARCH: TaskSpec(
+        TASK_DEEP_RESEARCH,
+        "prompt_deep_research.md",
+        MODEL_SONNET,
+        schemas.DeepResearchOut,
+        max_iters=DEEP_RESEARCH_MAX_ITERS,
     ),
 }
 
@@ -116,6 +127,7 @@ class Researcher:
 
     async def run_task(self, task_name: str, *, inputs: dict[str, Any], max_tokens: int = 4096) -> BaseModel:
         spec = TASKS[task_name]
+        max_iters = spec.max_iters or self._max_iters
         allowlist = {t.name: t for t in get_tools_for(task_name)}
         submit = _submit_tool(spec)
         tools = [
@@ -128,9 +140,9 @@ class Researcher:
             {"role": "user", "content": json.dumps(_jsonable(inputs), default=str)}
         ]
 
-        for attempt in range(self._max_iters):
+        for attempt in range(max_iters):
             # On the last attempt, force the submit tool so we always end with structured output.
-            force_submit = attempt == self._max_iters - 1
+            force_submit = attempt == max_iters - 1
             resp = await self._llm.create(
                 model=spec.model,
                 system=system,
@@ -167,7 +179,7 @@ class Researcher:
                 messages.append({"role": "user", "content": tool_results})
 
         raise RuntimeError(
-            f"researcher task {task_name!r} did not submit within {self._max_iters} iterations"
+            f"researcher task {task_name!r} did not submit within {max_iters} iterations"
         )
 
     async def _run_tool(self, allowlist: dict, name: str, args: dict[str, Any]) -> Any:

@@ -56,7 +56,7 @@ async def _latest(session: AsyncSession, company_id: int, kind: str) -> object |
 @tool(
     name="get_latest_scores",
     description="Newest fundamental + sentimental score for a deep-coverage company.",
-    tasks={TASK_COMPANY_PROSE, TASK_SECTION_SNAPSHOT, TASK_TOP_SNAPSHOT, TASK_FOLLOWUP},
+    tasks={TASK_COMPANY_PROSE, TASK_SECTION_SNAPSHOT, TASK_TOP_SNAPSHOT, TASK_FOLLOWUP, TASK_DEEP_RESEARCH},
     output_model=LatestScores,
 )
 async def get_latest_scores(session: AsyncSession, *, company_id: int) -> LatestScores:
@@ -72,7 +72,7 @@ async def get_latest_scores(session: AsyncSession, *, company_id: int) -> Latest
 @tool(
     name="get_score_history",
     description="Historical score trajectory on one axis (fundamental|sentimental), newest first.",
-    tasks={TASK_COMPANY_PROSE, TASK_FOLLOWUP},
+    tasks={TASK_COMPANY_PROSE, TASK_FOLLOWUP, TASK_DEEP_RESEARCH},
     output_model=ScoreRow,
 )
 async def get_score_history(
@@ -97,7 +97,7 @@ async def get_score_history(
 @tool(
     name="get_latest_prose",
     description="Newest prose row on one axis (fundamental|sentimental), with supporting sources.",
-    tasks={TASK_COMPANY_PROSE, TASK_SECTION_SNAPSHOT, TASK_TOP_SNAPSHOT, TASK_FOLLOWUP},
+    tasks={TASK_COMPANY_PROSE, TASK_SECTION_SNAPSHOT, TASK_TOP_SNAPSHOT, TASK_FOLLOWUP, TASK_DEEP_RESEARCH},
     output_model=ProseRow,
 )
 async def get_latest_prose(

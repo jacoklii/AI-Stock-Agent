@@ -94,7 +94,7 @@ ai-stock-agent/
     │       ├── agents/researcher/  # agent.py, schemas.py, prompts/*.md
     │       ├── analysis/           # fundamental_score.py, sentiment_analysis.py
     │       ├── workflows/          # runtime, concurrency, triggers, registry, 8 pipelines
-    │       ├── scheduler/          # schedule.py
+    │       ├── scheduler/          # schedule.py, runner.py (APScheduler)
     │       ├── mcp_server/         # server.py
     │       └── api/                # deps, schemas, routes/
     ├── frontend/
