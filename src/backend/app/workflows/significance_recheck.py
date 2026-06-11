@@ -11,7 +11,7 @@ from __future__ import annotations
 from sqlalchemy import select
 
 from app.agents.researcher import get_researcher
-from app.config import DEFAULT_THRESHOLDS
+from app.config import DEEP_RESEARCH_WAKEUP_SIGNIFICANCE, DEFAULT_THRESHOLDS
 from app.db.models.news import NewsEvent
 from app.db.session import SessionLocal, readonly_session
 from app.tools.registry import TASK_SIGNIFICANCE
@@ -77,3 +77,10 @@ async def run(*, lookback_limit: int = 200) -> None:
                     row.significance = promotions[row.id]
                     task.count("promoted")
                 await session.commit()
+
+        # 3. An event aged into importance: call the researcher back. — signal-convergence trigger
+        if promotions and max(promotions.values()) >= DEEP_RESEARCH_WAKEUP_SIGNIFICANCE:
+            from app.workflows import deep_research
+
+            await deep_research.run_autonomous()
+            task.count("wakeup")

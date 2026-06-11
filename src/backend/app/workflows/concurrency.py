@@ -1,4 +1,4 @@
-"""Concurrency stops: one workflow per company, small cross-company parallelism.
+"""Concurrency stops: one workflow per company, small cross-company parallelism, named slots.
 
 The architecture's concurrency rule has two halves:
 
@@ -6,6 +6,10 @@ The architecture's concurrency rule has two halves:
   given company, so two runs can't race on the same rows.
 - *small parallelism across companies* — ``company_gate()`` is a bounded semaphore capping how
   many companies are processed at once; ``gather_bounded`` fans a coroutine out under that cap.
+
+``workflow_slot(name)`` is the third primitive: non-blocking exclusivity for one named workflow,
+for the runs that can fire from several directions at once (hourly cron, inline digest call,
+event-driven wakeup) but must not overlap. A skipped run is fine — the holder is doing the work.
 
 These are in-process primitives, which is exactly right for the v1 single always-on host. If
 this ever scales to multiple processes, the per-company lock becomes a Postgres advisory lock
@@ -44,6 +48,22 @@ async def company_gate() -> AsyncIterator[None]:
     """Bound how many companies run concurrently across the whole process."""
     async with _company_gate:
         yield
+
+
+_workflow_slots: dict[str, asyncio.Lock] = {}
+
+
+@asynccontextmanager
+async def workflow_slot(name: str) -> AsyncIterator[bool]:
+    """Non-blocking exclusivity for one named workflow: yields ``False`` (caller skips) when a
+    run already holds the slot, ``True`` after acquiring it. Safe in cooperative asyncio — no
+    await between the ``locked()`` check and the uncontended acquire."""
+    lock = _workflow_slots.setdefault(name, asyncio.Lock())
+    if lock.locked():
+        yield False
+        return
+    async with lock:
+        yield True
 
 
 async def gather_bounded(coros: Iterable[Awaitable[T]]) -> list[T]:

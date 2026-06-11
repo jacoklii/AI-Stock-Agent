@@ -116,10 +116,31 @@ register_trigger(Trigger(
     cron="0 10 * * *",
 ))
 register_trigger(Trigger(
+    name="news_ingest_hourly",
+    kind=TriggerKind.scheduled,
+    workflow=WF_NEWS_INGEST,
+    description="Continuous breadth: pull + classify news around the clock; URL dedup keeps re-fetch cheap.",
+    cron="0 * * * *",
+))
+register_trigger(Trigger(
+    name="significance_recheck_daily",
+    kind=TriggerKind.scheduled,
+    workflow=WF_SIGNIFICANCE_RECHECK,
+    description="After the close, re-check low-significance events against the day's price reaction.",
+    cron="0 21 * * 1-5",
+))
+register_trigger(Trigger(
     name="news_ingested",
     kind=TriggerKind.event,
     workflow=WF_RESCORE,
     description="New events written -> enqueue watchlisted companies for re-scoring.",
+    source=WF_NEWS_INGEST,
+))
+register_trigger(Trigger(
+    name="signal_convergence",
+    kind=TriggerKind.event,
+    workflow=WF_DEEP_RESEARCH,
+    description="Breadth surfaced an event at/above the wakeup significance -> call the researcher back.",
     source=WF_NEWS_INGEST,
 ))
 register_trigger(Trigger(

@@ -11,19 +11,22 @@ a cost boundary:
   ``tasks`` row.
 
 Other stops: ≤ ``deep_research_max_active`` open sessions, and the bounded agent loop. On an
-autonomous run the findings are promoted to an ``analysis`` row; the session is closed (and its
-findings embedded for future retrieval) even on failure, so it never holds a slot or budget open.
+autonomous run the findings are promoted to an ``analysis`` row. A completed (or failed) session
+is closed and its findings embedded for future retrieval; a session the agent *paused*
+(``status="paused"``) stays open so the next autonomous wakeup resumes it — sessions past
+``DEEP_RESEARCH_MAX_SESSION_AGE_DAYS`` are force-completed at wakeup so a paused thread never
+holds a slot forever.
 """
 
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 
 from app.agents.budget import Budget, remaining_weekly_budget
 from app.agents.researcher import TASKS, get_researcher
-from app.config import get_settings
+from app.config import DEEP_RESEARCH_MAX_SESSION_AGE_DAYS, get_settings
 from app.db.enums import AnalysisType, StateStatus
 from app.db.models.analysis import Analysis
 from app.db.models.companies import Industry
@@ -35,7 +38,8 @@ from app.db.session import SessionLocal, readonly_session
 from app.providers.embeddings import get_embeddings_provider
 from app.tools.registry import TASK_DEEP_RESEARCH
 from app.tools.research import search_similar
-from app.tools.state import close_research, get_research_state, open_research
+from app.tools.state import close_research, get_research_state, open_research, update_research
+from app.workflows.concurrency import workflow_slot
 from app.workflows.runtime import run_task
 from app.workflows.triggers import WF_DEEP_RESEARCH
 
@@ -84,9 +88,18 @@ async def _recall(query: str) -> dict:
     return {"known_analysis": known_analysis, "related_sessions": related_sessions}
 
 
-async def _promote(state_id: int, out, model_name: str) -> None:
-    """Autonomous close: write the session's findings into the durable ``analysis`` record."""
-    text = out.findings or out.answer or ""
+async def _promote(
+    state_id: int,
+    *,
+    answer: str | None,
+    findings: str | None,
+    open_questions: str | None,
+    sources: list[int],
+    model_name: str,
+) -> None:
+    """Autonomous close: write a session's findings into the durable ``analysis`` record.
+    Field arguments so both a submitted output and a stale state row can be promoted."""
+    text = findings or answer or ""
     embeddings = get_embeddings_provider()
     async with SessionLocal() as session:
         state = await get_research_state(session, state_id=state_id)
@@ -96,12 +109,12 @@ async def _promote(state_id: int, out, model_name: str) -> None:
                 type=AnalysisType.summary,
                 content=AnalysisContent(
                     topic=state.topic if state else None,
-                    findings=out.findings,
-                    open_questions=out.open_questions,
-                    answer=out.answer,
+                    findings=findings,
+                    open_questions=open_questions,
+                    answer=answer,
                 ),
                 supporting_inputs=AnalysisSupportingInputs(
-                    news_event_ids=out.sources,
+                    news_event_ids=sources,
                     source_refs=state.source_urls if state else [],
                 ),
                 model_name=model_name,
@@ -159,6 +172,7 @@ async def run(
         params={"query": query, "company_id": company_id, "industry_id": industry_id, "initiated_by": initiated_by, "resumed": resume_state_id is not None},
         state_id=state_id,
     ) as task:
+        out = None
         try:
             recalled = await _recall(query)
             inputs = {
@@ -178,16 +192,42 @@ async def run(
                 inputs["candidates"] = candidates
             out = await get_researcher().run_task(TASK_DEEP_RESEARCH, inputs=inputs, budget=budget)
         finally:
-            # Record spend and close the session (embedding its findings) even on failure.
+            # Record spend always. Close the session (embedding its findings) on completion or
+            # failure — but a *paused* session stays open so the next wakeup resumes it.
             task.tokens = budget.spent
+            paused = out is not None and out.status == "paused"
+            if not paused:
+                async with SessionLocal() as session:
+                    await close_research(session, get_embeddings_provider(), state_id=state_id)
+
+        if paused:
+            # Total-loss safety net: the resume contract is what the agent flushed, but if it
+            # paused without flushing anything, persist the submitted output instead.
             async with SessionLocal() as session:
-                await close_research(session, get_embeddings_provider(), state_id=state_id)
+                state = await get_research_state(session, state_id=state_id)
+                if state is not None and not state.findings and (out.findings or out.open_questions):
+                    await update_research(
+                        session,
+                        state_id=state_id,
+                        findings=out.findings or None,
+                        open_questions=out.open_questions or None,
+                        source_ids=out.sources or None,
+                    )
+            task.message("paused")
+            return {"blocked": False, "paused": True, "answer": out.answer, "sources": out.sources, "state_id": state_id}
 
         if initiated_by != "user":
-            await _promote(state_id, out, model_name)
+            await _promote(
+                state_id,
+                answer=out.answer,
+                findings=out.findings,
+                open_questions=out.open_questions,
+                sources=out.sources,
+                model_name=model_name,
+            )
             task.count("promoted")
         task.message("answered")
-        return {"blocked": False, "answer": out.answer, "sources": out.sources, "state_id": state_id}
+        return {"blocked": False, "paused": False, "answer": out.answer, "sources": out.sources, "state_id": state_id}
 
 
 _AUTONOMOUS_QUERY = (
@@ -210,10 +250,17 @@ async def _candidates() -> dict:
         ).scalars():
             if si is not None:
                 covered.update(si.news_event_ids)
+        # Fresh events, plus older events recently *promoted* by the significance recheck —
+        # promotion is the only thing that updates a news row, so updated_at is that signal.
         events = (
             await session.execute(
                 select(NewsEvent.id, NewsEvent.headline, NewsEvent.significance)
-                .where(NewsEvent.published_at >= now - timedelta(hours=24))
+                .where(
+                    or_(
+                        NewsEvent.published_at >= now - timedelta(hours=24),
+                        NewsEvent.updated_at >= now - timedelta(hours=24),
+                    )
+                )
                 .order_by(NewsEvent.significance.desc())
                 .limit(10)
             )
@@ -239,6 +286,40 @@ async def _candidates() -> dict:
     }
 
 
+async def _expire_stale_sessions() -> None:
+    """Force-complete open sessions past the max age: promote what was flushed, then close.
+    Expiry keys on ``opened_at`` deliberately — a session resumed daily refreshes
+    ``last_active_at`` forever, and it's exactly that monopoly this breaks."""
+    cutoff = datetime.now(timezone.utc) - timedelta(days=DEEP_RESEARCH_MAX_SESSION_AGE_DAYS)
+    async with readonly_session() as session:
+        stale = list(
+            (
+                await session.execute(
+                    select(ResearchState.id)
+                    .where(ResearchState.status == StateStatus.open)
+                    .where(ResearchState.opened_at < cutoff)
+                )
+            ).scalars()
+        )
+    if not stale:
+        return
+    model_name = TASKS[TASK_DEEP_RESEARCH].model
+    for state_id in stale:
+        async with readonly_session() as session:
+            state = await get_research_state(session, state_id=state_id)
+        if state is not None and state.findings:
+            await _promote(
+                state_id,
+                answer=None,
+                findings=state.findings,
+                open_questions=state.open_questions,
+                sources=state.source_ids,
+                model_name=model_name,
+            )
+        async with SessionLocal() as session:
+            await close_research(session, get_embeddings_provider(), state_id=state_id)
+
+
 async def _oldest_open_session() -> tuple[int, str] | None:
     async with readonly_session() as session:
         row = (
@@ -253,18 +334,26 @@ async def _oldest_open_session() -> tuple[int, str] | None:
 
 
 async def run_autonomous() -> dict:
-    """The scheduled, self-directed session — the agent initiates, decides, or rests.
+    """The self-directed session — the agent initiates, decides, or rests. Fired by the daily
+    schedule or by signal convergence (breadth wrote a material event).
 
     Resumes the oldest still-open session first (finish what was started); otherwise gathers
     candidates from breadth signal and lets the agent choose its own focus. When nothing is
     material, the researcher rests — per the mental model, it only works when there is something
-    worth working on."""
-    open_row = await _oldest_open_session()
-    if open_row is not None:
-        state_id, topic = open_row
-        return await run(query=topic, initiated_by="schedule", resume_state_id=state_id)
+    worth working on. One autonomous session at a time: a wakeup that arrives while one is
+    running is skipped, not queued — the running session already sees the fresh events."""
+    async with workflow_slot(WF_DEEP_RESEARCH) as acquired:
+        if not acquired:
+            return {"skipped": True, "reason": "deep research already running"}
 
-    candidates = await _candidates()
-    if not candidates["significant_events"] and not candidates["open_questions"]:
-        return {"skipped": True, "reason": "no material signal"}
-    return await run(query=_AUTONOMOUS_QUERY, initiated_by="schedule", candidates=candidates)
+        await _expire_stale_sessions()
+
+        open_row = await _oldest_open_session()
+        if open_row is not None:
+            state_id, topic = open_row
+            return await run(query=topic, initiated_by="schedule", resume_state_id=state_id)
+
+        candidates = await _candidates()
+        if not candidates["significant_events"] and not candidates["open_questions"]:
+            return {"skipped": True, "reason": "no material signal"}
+        return await run(query=_AUTONOMOUS_QUERY, initiated_by="schedule", candidates=candidates)

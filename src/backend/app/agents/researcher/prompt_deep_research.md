@@ -1,4 +1,4 @@
-<!-- prompt_version: v1  | task: deep_research  | model: Sonnet -->
+<!-- prompt_version: v2  | task: deep_research  | model: Sonnet -->
 
 # Deep Research
 
@@ -38,8 +38,14 @@ Work the loop: **gather → reason → decide what's missing → gather more →
 3. Reason over what you gathered: what changed, what connects, what contradicts. Name the
    missing piece explicitly before fetching more.
 4. When a sub-question is settled, flush it (see Tool use), then move to the next gap.
-5. Synthesize when the question is answered, no new input is appearing, or the budget is low.
-   Unresolved threads go to `open_questions`, not into padded conclusions.
+5. Exit one of two ways:
+   - **Complete** — the question is answered or no new input is appearing: synthesize and
+     submit with `status: "complete"`. Unresolved side-threads go to `open_questions`, not
+     into padded conclusions.
+   - **Pause** — the budget is low or a material sub-question is still open mid-thread:
+     consolidate, flush everything to the session (see Tool use), and submit with
+     `status: "paused"`. The session stays open and you resume it at the next wakeup —
+     pause rather than padding a conclusion you haven't earned.
 
 ## Tool use
 
@@ -47,6 +53,8 @@ Work the loop: **gather → reason → decide what's missing → gather more →
   completes, flush `current_task` (what you're doing next), new `findings`, new
   `open_questions`, and the `source_ids` / `source_urls` you used. A session that crashes
   resumes only from what you flushed.
+- Before submitting with `status: "paused"`, flush all unflushed findings, open questions, and
+  sources via `update_research` — a paused session resumes only from the state row.
 - Do not call `open_research` or `close_research` — the workflow owns the session lifecycle.
 - `search_similar` over news / analysis / state before any external fetch.
 - Web reads are cache-first by default; bypass only when freshness matters.
@@ -65,6 +73,8 @@ Finish by calling `submit_deep_research`:
 - `findings` — the durable observations worth promoting to the record.
 - `open_questions` — what remains unresolved or worth a future session.
 - `sources` — the `news_event` ids the findings draw on.
+- `status` — `"complete"` when the question is answered (the session closes and findings are
+  promoted); `"paused"` when material work remains (the session stays open for resume).
 
 ## Constraints
 

@@ -9,13 +9,29 @@ instrument set and the default alert thresholds.
 
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# config.py -> app -> backend -> src -> <repo root>
-_ENV_FILE = Path(__file__).resolve().parents[3] / ".env"
+
+def _find_env_file() -> Path | None:
+    """Locate the shared `.env`: an explicit ``ENV_FILE`` path wins, else the nearest
+    `.env` walking up from this file (the repo root on the host). Containers typically
+    have none — docker-compose injects the same variables as real environment variables.
+    """
+    override = os.environ.get("ENV_FILE")
+    if override:
+        return Path(override)
+    for parent in Path(__file__).resolve().parents:
+        candidate = parent / ".env"
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+_ENV_FILE = _find_env_file()
 
 
 class Settings(BaseSettings):
@@ -86,6 +102,14 @@ MODEL_HAIKU = "claude-haiku-4-5-20251001"
 # A deep-research session self-paces over many tool calls, so it gets a larger loop bound than
 # the single-shot tasks (which use ``agent_max_tool_iters``). Still bounded — sessions terminate.
 DEEP_RESEARCH_MAX_ITERS = 24
+
+# Breadth calls the researcher back: a newly stored (or recheck-promoted) event at/above this
+# significance wakes the autonomous deep-research session between scheduled shifts.
+DEEP_RESEARCH_WAKEUP_SIGNIFICANCE = 0.7
+
+# An open session older than this is force-completed (flushed findings promoted, then closed) at
+# the next autonomous wakeup, so one never-finishing thread can't monopolize resume-first.
+DEEP_RESEARCH_MAX_SESSION_AGE_DAYS = 7
 
 
 # --- Fixed constants ----------------------------------------------------------

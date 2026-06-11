@@ -38,7 +38,9 @@ class NewsEvent(Base, TimestampMixin, FreshnessMixin):
     company_id: Mapped[int | None] = mapped_column(
         ForeignKey("companies.id", ondelete="SET NULL"), index=True, nullable=True
     )
-    url: Mapped[str] = mapped_column(Text)
+    # Unique so re-ingest is idempotent: the hourly breadth run dedups against this before
+    # paying for summarization, and the constraint backstops any race.
+    url: Mapped[str] = mapped_column(Text, unique=True)
     source: Mapped[str | None] = mapped_column(String(128), nullable=True)
     published_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     headline: Mapped[str] = mapped_column(Text)

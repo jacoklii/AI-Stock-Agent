@@ -11,6 +11,8 @@ with synthesis), and no field anywhere is a buy/sell/hold or a valuation call.
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -56,9 +58,14 @@ class FollowupOut(BaseModel):
 class DeepResearchOut(BaseModel):
     """The deliverable of a bounded deep-research session: the synthesized answer plus the
     findings and open questions to promote into the durable record, and the source events drawn
-    on. Observations + reasoning, never a decision or valuation call."""
+    on. Observations + reasoning, never a decision or valuation call.
+
+    ``status`` is the session's exit: ``complete`` closes and promotes; ``paused`` (material
+    sub-questions remain, or the budget forced a submit mid-question) keeps the state row open
+    so the next autonomous wakeup resumes it."""
 
     answer: str
     findings: str = ""
     open_questions: str = ""
     sources: list[int] = Field(default_factory=list)
+    status: Literal["complete", "paused"] = "complete"
