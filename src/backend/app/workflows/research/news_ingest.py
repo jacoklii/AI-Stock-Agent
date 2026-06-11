@@ -115,14 +115,14 @@ async def _classify_significance(event: RawEvent, summary: str) -> float:
 
 async def _enqueue_rescore(company_ids: set[int]) -> None:
     """Event trigger: enqueue watchlisted companies named by new events for re-scoring."""
-    from app.workflows import company_rescore
+    from app.workflows.analysis import company_rescore
 
     await company_rescore.run(company_ids=sorted(company_ids))
 
 
 async def _wakeup_deep_research() -> dict:
     """Signal-convergence trigger: breadth surfaced a material event — call the researcher back."""
-    from app.workflows import deep_research
+    from app.workflows.research import deep_research
 
     return await deep_research.run_autonomous()
 

@@ -30,7 +30,8 @@ from app.workflows.triggers import WF_DAILY_DIGEST
 
 
 async def _refresh() -> list[DigestSection]:
-    from app.workflows import company_rescore, news_ingest, sector_research
+    from app.workflows.analysis import company_rescore
+    from app.workflows.research import news_ingest, sector_research
 
     await news_ingest.run()
     await company_rescore.run()

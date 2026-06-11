@@ -11,7 +11,8 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.workflows import deep_research, market_pulse
+from app.workflows.message import market_pulse
+from app.workflows.research import deep_research
 
 client = TestClient(app)
 

@@ -92,7 +92,10 @@ ai-stock-agent/
     │       ├── tools/              # registry, tool_schema, research, analysis, delivery, invoke
     │       ├── agents/researcher/  # agent.py, schemas.py, prompts/*.md
     │       ├── analysis/           # fundamental_score.py, sentiment_analysis.py
-    │       ├── workflows/          # runtime, concurrency, triggers, registry, 8 pipelines
+    │       ├── workflows/          # shared: runtime, concurrency, triggers, registry, digest_types
+    │       │   ├── research/       # news_ingest, deep_research, sector_research
+    │       │   ├── analysis/       # company_rescore, prose_regeneration, significance_recheck
+    │       │   └── message/        # daily_digest, market_pulse
     │       ├── scheduler/          # schedule.py, runner.py (APScheduler)
     │       ├── mcp_server/         # server.py
     │       └── api/                # deps, schemas, routes/

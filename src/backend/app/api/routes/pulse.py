@@ -14,7 +14,7 @@ from app.api.deps import ro_session
 from app.api.schemas import BriefInstrumentOut, BriefStateOut
 from app.providers.market import get_market_provider
 from app.tools.research import get_brief_state
-from app.workflows import market_pulse
+from app.workflows.message import market_pulse
 
 router = APIRouter(tags=["brief"])
 

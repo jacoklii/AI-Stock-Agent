@@ -14,7 +14,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.agents.researcher.schemas import DeepResearchOut
-from app.workflows import deep_research
+from app.workflows.research import deep_research
 from app.workflows.runtime import TaskHandle
 
 

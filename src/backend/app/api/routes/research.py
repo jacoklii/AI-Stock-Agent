@@ -10,7 +10,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from app.api.schemas import FollowupRequest, FollowupResponse
-from app.workflows import deep_research
+from app.workflows.research import deep_research
 
 router = APIRouter(tags=["research"])
 

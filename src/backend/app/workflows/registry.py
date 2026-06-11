@@ -10,16 +10,9 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 
-from app.workflows import (
-    company_rescore,
-    daily_digest,
-    deep_research,
-    market_pulse,
-    news_ingest,
-    prose_regeneration,
-    sector_research,
-    significance_recheck,
-)
+from app.workflows.analysis import company_rescore, prose_regeneration, significance_recheck
+from app.workflows.message import daily_digest, market_pulse
+from app.workflows.research import deep_research, news_ingest, sector_research
 from app.workflows.triggers import (
     WF_DAILY_DIGEST,
     WF_DEEP_RESEARCH,

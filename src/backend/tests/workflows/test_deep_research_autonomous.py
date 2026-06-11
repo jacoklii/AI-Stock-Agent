@@ -10,7 +10,8 @@ from __future__ import annotations
 
 import asyncio
 
-from app.workflows import concurrency, deep_research
+from app.workflows import concurrency
+from app.workflows.research import deep_research
 
 
 def _no_open_session(monkeypatch) -> None:

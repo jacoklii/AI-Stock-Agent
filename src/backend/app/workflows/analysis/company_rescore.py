@@ -76,7 +76,7 @@ async def _rescore_one(company_id: int) -> None:
         for kind, new_row in zip(("fundamental", "sentimental"), rows):
             prev = getattr(prior, kind)
             if prev is not None and abs(new_row.score - prev.score) >= shift:
-                from app.workflows import prose_regeneration
+                from app.workflows.analysis import prose_regeneration
 
                 await prose_regeneration.run(company_id=company_id, kind=kind)
 

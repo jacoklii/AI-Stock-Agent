@@ -9,7 +9,8 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 
-from app.workflows import deep_research, significance_recheck
+from app.workflows.analysis import significance_recheck
+from app.workflows.research import deep_research
 from app.workflows.runtime import TaskHandle
 
 

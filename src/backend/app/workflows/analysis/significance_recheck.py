@@ -80,7 +80,7 @@ async def run(*, lookback_limit: int = 200) -> None:
 
         # 3. An event aged into importance: call the researcher back. — signal-convergence trigger
         if promotions and max(promotions.values()) >= DEEP_RESEARCH_WAKEUP_SIGNIFICANCE:
-            from app.workflows import deep_research
+            from app.workflows.research import deep_research
 
             await deep_research.run_autonomous()
             task.count("wakeup")

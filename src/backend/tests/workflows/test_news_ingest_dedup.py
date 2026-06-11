@@ -10,7 +10,8 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
-from app.workflows import concurrency, news_ingest
+from app.workflows import concurrency
+from app.workflows.research import news_ingest
 from app.workflows.runtime import TaskHandle
 
 
