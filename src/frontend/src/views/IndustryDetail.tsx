@@ -2,6 +2,7 @@ import { Link, useParams } from "react-router-dom";
 
 import { useCompanies, useFlagIndustry, useIndustries, useIndustryDetail } from "../api/queries";
 import { ArticleList } from "../components/ArticleList";
+import { Loading } from "../components/EmptyState";
 import { SnapshotCard } from "../components/SnapshotCard";
 
 const TIER_STYLE: Record<string, string> = {
@@ -53,7 +54,9 @@ export function IndustryDetail() {
       </p>
 
       <SnapshotCard title="Companies">
-        {inIndustry.length > 0 ? (
+        {companies.isLoading ? (
+          <Loading />
+        ) : inIndustry.length > 0 ? (
           <ul className="divide-y divide-neutral-100">
             {inIndustry.map((c) => (
               <li key={c.company_id}>

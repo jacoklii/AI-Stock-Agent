@@ -75,6 +75,11 @@ class FakeSession:
     async def flush(self) -> None:
         pass
 
+    async def refresh(self, obj) -> None:
+        # The real session re-reads server-generated values (e.g. onupdate timestamps);
+        # rows in these tests already carry whatever the test set.
+        pass
+
 
 def use_session(fake: FakeSession) -> None:
     """Route both session dependencies at ``fake`` for the current test."""

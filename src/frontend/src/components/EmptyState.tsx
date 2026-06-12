@@ -6,3 +6,12 @@ export function EmptyState({ message, hint }: { message: string; hint?: string }
     </div>
   );
 }
+
+/** In-flight placeholder — empty-state copy must never show while a list is still loading. */
+export function Loading() {
+  return (
+    <p className="animate-pulse text-sm text-neutral-300" aria-busy="true">
+      Loading…
+    </p>
+  );
+}

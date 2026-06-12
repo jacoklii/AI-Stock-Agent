@@ -22,19 +22,30 @@ router = APIRouter(tags=["home"])
 
 @router.get("/digest/latest", response_model=DigestView | None)
 async def latest_digest(session: AsyncSession = Depends(ro_session)) -> DigestView | None:
-    row = (
+    # ``type=summary`` also covers promoted research findings (topic/findings shape) — only
+    # rows carrying the digest shape (top_snapshot/sections) are a digest. Scan recent rows.
+    rows = (
         await session.execute(
             select(Analysis)
             .where(Analysis.type == AnalysisType.summary)
             .order_by(Analysis.generated_at.desc())
-            .limit(1)
+            .limit(20)
         )
-    ).scalar_one_or_none()
+    ).scalars()
+    row = next(
+        (
+            r
+            for r in rows
+            if r.content is not None
+            and not {"top_snapshot", "sections"}.isdisjoint(r.content.model_dump())
+        ),
+        None,
+    )
     if row is None:
         return None
 
-    # content is an open JSONB shape (keys defined by the deferred digest prompt) — read defensively.
-    content = row.content.model_dump() if row.content is not None else {}
+    # content is an open JSONB shape (keys defined by the digest prompt) — read defensively.
+    content = row.content.model_dump()
     sections = [
         DigestSectionOut(
             section_title=s.get("section_title", ""),

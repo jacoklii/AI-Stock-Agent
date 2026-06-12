@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 
 import { useActivity, useBudget, useDigest, useResearchList } from "../api/queries";
 import { BudgetGauge } from "../components/BudgetGauge";
-import { EmptyState } from "../components/EmptyState";
+import { EmptyState, Loading } from "../components/EmptyState";
 import { FreshnessStamp } from "../components/FreshnessStamp";
 import { Prose } from "../components/Prose";
 import { SnapshotCard } from "../components/SnapshotCard";
@@ -24,17 +24,23 @@ export function Home() {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
           <SnapshotCard title="Working now">
-            <TaskList
-              tasks={activity.data?.running ?? []}
-              empty="Idle — watching breadth signals; deep work resumes when something is material."
-            />
+            {activity.isLoading ? (
+              <Loading />
+            ) : (
+              <TaskList
+                tasks={activity.data?.running ?? []}
+                empty="Idle — watching breadth signals; deep work resumes when something is material."
+              />
+            )}
           </SnapshotCard>
 
           <SnapshotCard
             title="Today's digest"
             aside={digest.data && <FreshnessStamp iso={digest.data.generated_at} label="generated" />}
           >
-            {digest.data ? (
+            {digest.isLoading ? (
+              <Loading />
+            ) : digest.data ? (
               <div className="space-y-3">
                 {digest.data.top_snapshot && <Prose>{digest.data.top_snapshot}</Prose>}
                 {digest.data.sections.map((s) => (
@@ -62,7 +68,11 @@ export function Home() {
           </SnapshotCard>
 
           <SnapshotCard title="Recent activity">
-            <TaskList tasks={activity.data?.recent ?? []} empty="No completed tasks yet." />
+            {activity.isLoading ? (
+              <Loading />
+            ) : (
+              <TaskList tasks={activity.data?.recent ?? []} empty="No completed tasks yet." />
+            )}
           </SnapshotCard>
         </div>
 
@@ -74,7 +84,9 @@ export function Home() {
           )}
 
           <SnapshotCard title="Open research">
-            {(openSessions.data ?? []).length > 0 ? (
+            {openSessions.isLoading ? (
+              <Loading />
+            ) : (openSessions.data ?? []).length > 0 ? (
               <ul className="space-y-2">
                 {(openSessions.data ?? []).map((s) => (
                   <li key={s.state_id}>
@@ -100,7 +112,9 @@ export function Home() {
           </SnapshotCard>
 
           <SnapshotCard title="Latest findings">
-            {(recentClosed.data ?? []).length > 0 ? (
+            {recentClosed.isLoading ? (
+              <Loading />
+            ) : (recentClosed.data ?? []).length > 0 ? (
               <ul className="space-y-2">
                 {(recentClosed.data ?? []).map((s) => (
                   <li key={s.state_id}>

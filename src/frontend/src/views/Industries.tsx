@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 
 import { useCompanies, useIndustries } from "../api/queries";
-import { EmptyState } from "../components/EmptyState";
+import { EmptyState, Loading } from "../components/EmptyState";
 import { SnapshotCard } from "../components/SnapshotCard";
 
 /** Tracked industries (controlled vocabulary) + the watchlist — coverage at a glance. */
@@ -14,7 +14,9 @@ export function Industries() {
       <h1 className="text-lg font-bold tracking-tight">Industries & coverage</h1>
 
       <SnapshotCard title="Industries">
-        {(industries.data ?? []).length > 0 ? (
+        {industries.isLoading ? (
+          <Loading />
+        ) : (industries.data ?? []).length > 0 ? (
           <ul className="divide-y divide-neutral-100">
             {(industries.data ?? []).map((i) => (
               <li key={i.industry_id}>
@@ -46,7 +48,9 @@ export function Industries() {
       </SnapshotCard>
 
       <SnapshotCard title="Watchlist (deep coverage)">
-        {(watchlist.data ?? []).length > 0 ? (
+        {watchlist.isLoading ? (
+          <Loading />
+        ) : (watchlist.data ?? []).length > 0 ? (
           <ul className="divide-y divide-neutral-100">
             {(watchlist.data ?? []).map((c) => (
               <li key={c.company_id}>

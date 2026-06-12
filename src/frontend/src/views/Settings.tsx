@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   usePreferences,
@@ -31,9 +31,14 @@ export function Settings() {
     brief_channels: ["imessage", "in_app"],
   });
 
+  // Seed the forms once when preferences first arrive. Re-syncing on every refetch would
+  // clobber in-progress edits in one card whenever another card saves (saving invalidates
+  // the prefs query); each save's onSuccess below re-syncs only its own field instead.
+  const seeded = useRef(false);
   useEffect(() => {
     const p = prefs.data;
-    if (!p) return;
+    if (!p || seeded.current) return;
+    seeded.current = true;
     setBriefSymbols(p.brief_user.join(", "));
     setBudget(p.weekly_token_budget != null ? String(p.weekly_token_budget) : "");
     setEmail(p.channels?.email ?? "");
@@ -167,6 +172,7 @@ export function Settings() {
                 .split(",")
                 .map((s) => s.trim().toUpperCase())
                 .filter(Boolean),
+              { onSuccess: (data) => setBriefSymbols(data.brief_user.join(", ")) },
             );
           }}
         >
@@ -184,6 +190,8 @@ export function Settings() {
             Save
           </button>
         </form>
+        {updateBriefUser.isSuccess && <span className="text-xs text-emerald-600">saved</span>}
+        {updateBriefUser.isError && <span className="text-xs text-red-600">failed</span>}
       </SnapshotCard>
 
       <SnapshotCard title="Weekly token budget">
@@ -214,6 +222,8 @@ export function Settings() {
             Save
           </button>
         </form>
+        {updateBudget.isSuccess && <span className="text-xs text-emerald-600">saved</span>}
+        {updateBudget.isError && <span className="text-xs text-red-600">failed</span>}
       </SnapshotCard>
     </div>
   );

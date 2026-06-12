@@ -1,5 +1,5 @@
 import { useInbox, useInboxAction } from "../api/queries";
-import { EmptyState } from "../components/EmptyState";
+import { EmptyState, Loading } from "../components/EmptyState";
 import { FreshnessStamp } from "../components/FreshnessStamp";
 
 const CHANNEL_LABEL: Record<string, string> = {
@@ -21,7 +21,9 @@ export function Inbox() {
     <div className="mx-auto max-w-3xl space-y-4">
       <h1 className="text-lg font-bold tracking-tight">Inbox</h1>
 
-      {items.length === 0 ? (
+      {inbox.isLoading ? (
+        <Loading />
+      ) : items.length === 0 ? (
         <EmptyState
           message="Inbox is clear."
           hint="Digest, brief, and alert deliveries mirror here."

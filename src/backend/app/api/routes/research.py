@@ -242,6 +242,9 @@ async def redirect_session(
     if body.current_task is not None:
         row.current_task = body.current_task
     await session.commit()
+    # The UPDATE expires last_active_at (server-side onupdate); refresh async, or the
+    # response serializer trips a sync lazy-load (MissingGreenlet).
+    await session.refresh(row)
     return _session_out(row)
 
 

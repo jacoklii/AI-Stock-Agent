@@ -80,6 +80,12 @@ export function ResearchDetail() {
         )}
       </div>
 
+      {close.isError && (
+        <p className="text-xs text-red-600">
+          {close.error instanceof Error ? close.error.message : "close failed"}
+        </p>
+      )}
+
       {s.current_task && (
         <p className="rounded-md bg-blue-50 px-3 py-2 text-sm text-blue-800">
           Currently: {s.current_task}
@@ -128,6 +134,14 @@ export function ResearchDetail() {
               Redirect
             </button>
           </form>
+          {redirect.isError && (
+            <p className="mt-2 text-xs text-red-600">
+              {redirect.error instanceof Error ? redirect.error.message : "redirect failed"}
+            </p>
+          )}
+          {redirect.isSuccess && (
+            <p className="mt-2 text-xs text-emerald-600">Redirected — topic updated.</p>
+          )}
           <p className="mt-2 text-xs text-neutral-400">
             Takes effect when the session next resumes — the agent reconstructs its context from
             this state row.

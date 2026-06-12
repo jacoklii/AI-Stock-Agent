@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { useOpenResearch, useResearchList } from "../api/queries";
-import { EmptyState } from "../components/EmptyState";
+import { EmptyState, Loading } from "../components/EmptyState";
 import { FreshnessStamp } from "../components/FreshnessStamp";
 import { SnapshotCard } from "../components/SnapshotCard";
 import { StatusPill } from "../components/StatusPill";
@@ -84,7 +84,9 @@ export function Research() {
       )}
 
       <SnapshotCard title={`Open (${open.data?.length ?? 0} / 3)`}>
-        {(open.data ?? []).length > 0 ? (
+        {open.isLoading ? (
+          <Loading />
+        ) : (open.data ?? []).length > 0 ? (
           <div className="space-y-2">
             {(open.data ?? []).map((s) => (
               <SessionRow key={s.state_id} session={s} />
@@ -99,7 +101,9 @@ export function Research() {
       </SnapshotCard>
 
       <SnapshotCard title="Closed">
-        {(closed.data ?? []).length > 0 ? (
+        {closed.isLoading ? (
+          <Loading />
+        ) : (closed.data ?? []).length > 0 ? (
           <div className="space-y-2">
             {(closed.data ?? []).map((s) => (
               <SessionRow key={s.state_id} session={s} />

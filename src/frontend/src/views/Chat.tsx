@@ -41,7 +41,7 @@ export function Chat() {
   };
 
   return (
-    <div className="mx-auto flex h-[calc(100vh-3rem)] max-w-3xl flex-col">
+    <div className="mx-auto flex h-[calc(100dvh-8.5rem)] max-w-3xl flex-col md:h-[calc(100vh-3rem)]">
       <h1 className="mb-3 text-lg font-bold tracking-tight">Chat</h1>
 
       <div className="flex-1 space-y-3 overflow-y-auto rounded-lg border border-neutral-200 bg-white p-4">
