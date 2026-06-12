@@ -1,6 +1,7 @@
 import { MutationCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Link, Route, Routes } from "react-router-dom";
 
+import { ApiError } from "./api/client";
 import { CHAT_SEND_KEY } from "./api/queries";
 import { NavShell } from "./components/NavShell";
 import { Brief } from "./views/Brief";
@@ -19,7 +20,10 @@ const queryClient: QueryClient = new QueryClient({
     queries: {
       staleTime: 30_000,
       refetchOnWindowFocus: true,
-      retry: 1,
+      // 4xx is a definitive answer (not found, bad request) — retrying only delays the
+      // error state; transient/server failures get one retry.
+      retry: (failureCount, error) =>
+        error instanceof ApiError && error.status < 500 ? false : failureCount < 1,
     },
   },
   // Chat sends can outlive the view that fired them (ask from a company page, navigate away);

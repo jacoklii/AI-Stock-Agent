@@ -60,7 +60,8 @@ export function useResearchDetail(stateId: number) {
           params: { path: { state_id: stateId } },
         }),
       ),
-    refetchInterval: 15_000,
+    // A dead id stays dead — don't re-poll a 404 every 15 seconds.
+    refetchInterval: (query) => (query.state.error ? false : 15_000),
   });
 }
 
