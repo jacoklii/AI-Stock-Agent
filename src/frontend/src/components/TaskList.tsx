@@ -16,7 +16,10 @@ export function TaskList({ tasks, empty = "Nothing here." }: { tasks: TaskOut[];
               <span className="truncate font-mono text-sm text-neutral-800">{t.type}</span>
               <StatusPill status={t.status} />
             </div>
-            <div className="mt-0.5 text-xs text-neutral-400">
+            <div
+              className="mt-0.5 line-clamp-2 break-words text-xs text-neutral-400"
+              title={t.error_message ?? undefined}
+            >
               {timeAgo(t.started_at)}
               {t.message ? ` · ${t.message}` : ""}
               {t.error_message ? ` · ${t.error_message}` : ""}

@@ -37,9 +37,12 @@ def test_brief_latest_returns_stored_snapshot(client) -> None:
     assert body["body"] == "Futures flat; gold bid."
 
 
-def test_brief_latest_404_before_first_delivery(client) -> None:
+def test_brief_latest_null_before_first_delivery(client) -> None:
+    # "Nothing delivered yet" is an expected state: 200/null, not a console-noise 404.
     use_session(FakeSession([FakeResult(scalar=None)]))
-    assert client.get("/brief/latest").status_code == 404
+    resp = client.get("/brief/latest")
+    assert resp.status_code == 200
+    assert resp.json() is None
 
 
 def test_inbox_items_carry_title_and_body(client) -> None:

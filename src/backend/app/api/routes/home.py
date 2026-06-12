@@ -2,12 +2,13 @@
 
 Per ARCHITECTURE.md the digest is NOT persisted as its own table — it is reconstructed from the
 most recent ``analysis`` row of ``type=summary`` (the top snapshot + section snapshots the digest
-workflow writes). That workflow is deferred, so this returns 404 until a summary row exists.
+workflow writes). "No digest yet" is an expected state, not an error, so it answers 200/null —
+a 404 would log a console error on every Home load.
 """
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,8 +20,8 @@ from app.db.models.analysis import Analysis
 router = APIRouter(tags=["home"])
 
 
-@router.get("/digest/latest", response_model=DigestView)
-async def latest_digest(session: AsyncSession = Depends(ro_session)) -> DigestView:
+@router.get("/digest/latest", response_model=DigestView | None)
+async def latest_digest(session: AsyncSession = Depends(ro_session)) -> DigestView | None:
     row = (
         await session.execute(
             select(Analysis)
@@ -30,7 +31,7 @@ async def latest_digest(session: AsyncSession = Depends(ro_session)) -> DigestVi
         )
     ).scalar_one_or_none()
     if row is None:
-        raise HTTPException(status_code=404, detail="no digest has been generated yet")
+        return None
 
     # content is an open JSONB shape (keys defined by the deferred digest prompt) — read defensively.
     content = row.content.model_dump() if row.content is not None else {}

@@ -8,6 +8,7 @@ import {
 } from "../api/queries";
 import { ArticleList } from "../components/ArticleList";
 import { FreshnessStamp } from "../components/FreshnessStamp";
+import { Prose } from "../components/Prose";
 import { SnapshotCard } from "../components/SnapshotCard";
 import { SourceChips } from "../components/SourceChips";
 import { StatusPill } from "../components/StatusPill";
@@ -41,33 +42,41 @@ export function ResearchDetail() {
             />
           </div>
         </div>
-        {(s.status === "open" || !close.data?.promoted) && (
+        {s.status === "open" ? (
           <div className="flex shrink-0 items-center gap-2">
-            {s.status === "open" && (
-              <label className="flex items-center gap-1 text-xs text-neutral-500">
-                <input
-                  type="checkbox"
-                  checked={promote}
-                  onChange={(e) => setPromote(e.target.checked)}
-                />
-                promote findings
-              </label>
-            )}
+            <label className="flex items-center gap-1 text-xs text-neutral-500">
+              <input
+                type="checkbox"
+                checked={promote}
+                onChange={(e) => setPromote(e.target.checked)}
+              />
+              promote findings
+            </label>
             <button
               type="button"
               onClick={() => close.mutate(promote)}
-              disabled={close.isPending || close.data !== undefined}
+              disabled={close.isPending}
               className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium hover:bg-neutral-100 disabled:opacity-40"
             >
-              {s.status === "open"
-                ? close.data
-                  ? "Closed"
-                  : "Close session"
-                : close.data?.promoted
-                  ? "Promoted"
-                  : "Promote findings"}
+              {close.isPending ? "Closing…" : "Close session"}
             </button>
           </div>
+        ) : (
+          // Closed sessions can still answer the promotion question (promote-only close).
+          (s.findings || s.open_questions) && (
+            <button
+              type="button"
+              onClick={() => close.mutate(true)}
+              disabled={close.isPending || close.data?.promoted === true}
+              className="shrink-0 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium hover:bg-neutral-100 disabled:opacity-40"
+            >
+              {close.data?.promoted
+                ? "Promoted ✓"
+                : close.isPending
+                  ? "Promoting…"
+                  : "Promote findings"}
+            </button>
+          )
         )}
       </div>
 
@@ -79,7 +88,7 @@ export function ResearchDetail() {
 
       <SnapshotCard title="Findings">
         {s.findings ? (
-          <p className="prose-snapshot text-sm leading-relaxed text-neutral-800">{s.findings}</p>
+          <Prose>{s.findings}</Prose>
         ) : (
           <p className="text-sm text-neutral-400">
             Nothing flushed yet — findings appear as the agent finishes tasks.
@@ -89,9 +98,7 @@ export function ResearchDetail() {
 
       {s.open_questions && (
         <SnapshotCard title="Open questions">
-          <p className="prose-snapshot text-sm leading-relaxed text-neutral-700">
-            {s.open_questions}
-          </p>
+          <Prose>{s.open_questions}</Prose>
         </SnapshotCard>
       )}
 

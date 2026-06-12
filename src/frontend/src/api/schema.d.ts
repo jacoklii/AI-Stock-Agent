@@ -51,6 +51,8 @@ export interface paths {
         /**
          * Brief Latest
          * @description The most recently delivered brief snapshot (from the in-app ledger mirror).
+         *
+         *     "Nothing delivered yet" is an expected state, not an error — 200/null, like the digest.
          */
         get: operations["brief_latest_brief_latest_get"];
         put?: never;
@@ -1045,7 +1047,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DigestView"];
+                    "application/json": components["schemas"]["DigestView"] | null;
                 };
             };
         };
@@ -1085,7 +1087,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["BriefLatestOut"];
+                    "application/json": components["schemas"]["BriefLatestOut"] | null;
                 };
             };
         };

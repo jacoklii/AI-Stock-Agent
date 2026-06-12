@@ -20,3 +20,4 @@ src/frontend/dist/
 
 # OS / editor
 .DS_Store
+.playwright-mcp/

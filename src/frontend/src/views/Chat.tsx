@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
+import { useMutationState } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 
-import { useChatMessages, useOpenResearch, useSendChat } from "../api/queries";
+import { CHAT_SEND_KEY, useChatMessages, useOpenResearch, useSendChat } from "../api/queries";
+import { Prose } from "../components/Prose";
 import { SourceChips } from "../components/SourceChips";
 import { fmtDateTime } from "../lib/format";
 
@@ -14,9 +16,15 @@ export function Chat() {
   const [draft, setDraft] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
 
+  // All in-flight asks, whichever view fired them (here or a company page's "Ask").
+  const pendingAsks = useMutationState({
+    filters: { mutationKey: [CHAT_SEND_KEY], status: "pending" },
+    select: (m) => (m.state.variables as { content: string }).content,
+  });
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages.data?.length, send.isPending]);
+  }, [messages.data?.length, pendingAsks.length]);
 
   const submit = () => {
     const content = draft.trim();
@@ -37,7 +45,7 @@ export function Chat() {
       <h1 className="mb-3 text-lg font-bold tracking-tight">Chat</h1>
 
       <div className="flex-1 space-y-3 overflow-y-auto rounded-lg border border-neutral-200 bg-white p-4">
-        {(messages.data ?? []).length === 0 && !send.isPending && (
+        {(messages.data ?? []).length === 0 && pendingAsks.length === 0 && (
           <p className="text-sm text-neutral-400">
             Ask anything the agent watches — companies, industries, macro. Answers cite their
             sources; "go deeper" opens a bounded research session.
@@ -50,7 +58,11 @@ export function Chat() {
                 m.role === "user" ? "bg-neutral-900 text-white" : "bg-neutral-100 text-neutral-900"
               }`}
             >
-              <p className="prose-snapshot text-sm leading-relaxed">{m.content}</p>
+              {m.role === "assistant" ? (
+                <Prose>{m.content}</Prose>
+              ) : (
+                <p className="prose-snapshot text-sm leading-relaxed">{m.content}</p>
+              )}
               {m.role === "assistant" && <SourceChips urls={m.source_urls ?? []} />}
               <div
                 className={`mt-1 flex items-center gap-2 text-xs ${
@@ -72,7 +84,15 @@ export function Chat() {
             </div>
           </div>
         ))}
-        {send.isPending && (
+        {pendingAsks.map((content, i) => (
+          <div key={`pending-${i}`} className="flex justify-end">
+            <div className="max-w-[85%] rounded-lg bg-neutral-900 px-3 py-2 opacity-70">
+              <p className="prose-snapshot text-sm leading-relaxed text-white">{content}</p>
+              <span className="mt-1 block text-xs text-neutral-400">sending…</span>
+            </div>
+          </div>
+        ))}
+        {pendingAsks.length > 0 && (
           <div className="flex justify-start">
             <div className="rounded-lg bg-neutral-100 px-3 py-2 text-sm text-neutral-400">
               researching<span className="animate-pulse">…</span>

@@ -4,6 +4,7 @@ import { useActivity, useBudget, useDigest, useResearchList } from "../api/queri
 import { BudgetGauge } from "../components/BudgetGauge";
 import { EmptyState } from "../components/EmptyState";
 import { FreshnessStamp } from "../components/FreshnessStamp";
+import { Prose } from "../components/Prose";
 import { SnapshotCard } from "../components/SnapshotCard";
 import { StatusPill } from "../components/StatusPill";
 import { TaskList } from "../components/TaskList";
@@ -35,15 +36,11 @@ export function Home() {
           >
             {digest.data ? (
               <div className="space-y-3">
-                {digest.data.top_snapshot && (
-                  <p className="prose-snapshot text-sm leading-relaxed text-neutral-800">
-                    {digest.data.top_snapshot}
-                  </p>
-                )}
+                {digest.data.top_snapshot && <Prose>{digest.data.top_snapshot}</Prose>}
                 {digest.data.sections.map((s) => (
                   <div key={s.section_title} className="border-l-2 border-neutral-200 pl-3">
                     <h3 className="text-sm font-semibold text-neutral-700">{s.section_title}</h3>
-                    <p className="prose-snapshot mt-0.5 text-sm text-neutral-600">{s.snapshot}</p>
+                    <Prose>{s.snapshot}</Prose>
                     {s.key_tickers.length > 0 && (
                       <div className="mt-1 flex gap-1.5">
                         {s.key_tickers.map((t) => (

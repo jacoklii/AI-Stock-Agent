@@ -5,3 +5,82 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+/* Markdown-rendered LLM prose (Prose component) — compact, matches the snapshot scale. */
+.prose-md {
+  overflow-wrap: anywhere;
+}
+.prose-md > div > *:first-child,
+.prose-md > *:first-child {
+  margin-top: 0;
+}
+.prose-md p,
+.prose-md ul,
+.prose-md ol,
+.prose-md table,
+.prose-md blockquote {
+  margin: 0.5rem 0;
+}
+.prose-md h1,
+.prose-md h2,
+.prose-md h3,
+.prose-md h4 {
+  margin: 0.75rem 0 0.25rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+.prose-md ul {
+  list-style: disc;
+  padding-left: 1.25rem;
+}
+.prose-md ol {
+  list-style: decimal;
+  padding-left: 1.25rem;
+}
+.prose-md a {
+  color: var(--color-blue-700);
+  text-decoration: underline;
+}
+.prose-md code {
+  font-size: 0.8125rem;
+  background: var(--color-neutral-100);
+  border-radius: 0.25rem;
+  padding: 0 0.25rem;
+}
+.prose-md pre {
+  overflow-x: auto;
+  background: var(--color-neutral-100);
+  border-radius: 0.375rem;
+  padding: 0.5rem;
+  margin: 0.5rem 0;
+}
+.prose-md table {
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+}
+.prose-md th,
+.prose-md td {
+  border: 1px solid var(--color-neutral-200);
+  padding: 0.25rem 0.5rem;
+  text-align: left;
+}
+.prose-md th {
+  background: var(--color-neutral-50);
+  font-weight: 600;
+}
+
+/* On dark bubbles (user side) links/code must stay readable. */
+.prose-md-invert a {
+  color: var(--color-blue-300);
+}
+.prose-md-invert code,
+.prose-md-invert pre {
+  background: var(--color-neutral-800);
+}
+.prose-md-invert th,
+.prose-md-invert td {
+  border-color: var(--color-neutral-700);
+}
+.prose-md-invert th {
+  background: var(--color-neutral-800);
+}

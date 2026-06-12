@@ -29,11 +29,11 @@ def _read_quote(symbol: str) -> Quote:
     import yfinance as yf
 
     try:
+        # Attribute access, not .get(): FastInfo.get() keys on camelCase display names and
+        # silently returns None for the snake_case property names.
         info = yf.Ticker(symbol).fast_info
-        price = _as_float(info.get("last_price") if hasattr(info, "get") else info.last_price)
-        prev = _as_float(
-            info.get("previous_close") if hasattr(info, "get") else info.previous_close
-        )
+        price = _as_float(info.last_price)
+        prev = _as_float(info.previous_close)
     except Exception:
         # A bad/temporarily-unavailable symbol yields an empty reading, not a crash — the
         # pulse tool degrades gracefully per instrument rather than failing the whole set.

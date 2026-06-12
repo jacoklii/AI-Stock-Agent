@@ -7,7 +7,7 @@ last delivered snapshot from the notification ledger (the in-app mirror row carr
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -31,9 +31,11 @@ async def brief_state(session: AsyncSession = Depends(ro_session)) -> BriefState
     )
 
 
-@router.get("/brief/latest", response_model=BriefLatestOut)
-async def brief_latest(session: AsyncSession = Depends(ro_session)) -> BriefLatestOut:
-    """The most recently delivered brief snapshot (from the in-app ledger mirror)."""
+@router.get("/brief/latest", response_model=BriefLatestOut | None)
+async def brief_latest(session: AsyncSession = Depends(ro_session)) -> BriefLatestOut | None:
+    """The most recently delivered brief snapshot (from the in-app ledger mirror).
+
+    "Nothing delivered yet" is an expected state, not an error — 200/null, like the digest."""
     row = (
         await session.execute(
             select(Notification)
@@ -44,7 +46,7 @@ async def brief_latest(session: AsyncSession = Depends(ro_session)) -> BriefLate
         )
     ).scalar_one_or_none()
     if row is None:
-        raise HTTPException(status_code=404, detail="no brief delivered yet")
+        return None
     return BriefLatestOut(title=row.title, body=row.body, sent_at=row.sent_at)
 
 

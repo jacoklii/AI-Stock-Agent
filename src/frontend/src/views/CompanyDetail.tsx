@@ -4,6 +4,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useCompanyDetail, useSendChat, useWatchlistAction } from "../api/queries";
 import { ArticleList } from "../components/ArticleList";
 import { FreshnessStamp } from "../components/FreshnessStamp";
+import { Prose } from "../components/Prose";
 import { SnapshotCard } from "../components/SnapshotCard";
 
 /** One company: tier, scores with freshness, prose reads, article stream, ask-the-agent. */
@@ -25,10 +26,10 @@ export function CompanyDetail() {
   const ask = () => {
     const q = question.trim();
     if (!q || sendChat.isPending) return;
-    sendChat.mutate(
-      { content: `[${c.ticker}] ${q}`, company_id: id },
-      { onSuccess: () => navigate("/chat") },
-    );
+    // Fire and go: the mutation outlives this view (cache-level invalidation in App.tsx),
+    // and Chat renders it as a pending bubble while the researcher answers.
+    sendChat.mutate({ content: `[${c.ticker}] ${q}`, company_id: id });
+    navigate("/chat");
   };
 
   return (
@@ -81,7 +82,7 @@ export function CompanyDetail() {
           title={`${p.kind} read`}
           aside={<FreshnessStamp iso={p.generated_at} label="written" />}
         >
-          <p className="prose-snapshot text-sm leading-relaxed text-neutral-800">{p.body}</p>
+          <Prose>{p.body}</Prose>
         </SnapshotCard>
       ))}
 

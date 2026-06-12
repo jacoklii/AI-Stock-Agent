@@ -31,7 +31,7 @@ export function useBudget() {
 export function useDigest() {
   return useQuery({
     queryKey: ["digest"],
-    queryFn: () => nullOn404(api.GET("/digest/latest").then(unwrap)),
+    queryFn: async () => unwrap(await api.GET("/digest/latest")),
     staleTime: 60_000,
   });
 }
@@ -110,18 +110,19 @@ export function useChatMessages() {
   return useQuery({
     queryKey: ["chat"],
     queryFn: async () => unwrap(await api.GET("/chat/messages")),
+    refetchInterval: 30_000,
   });
 }
 
+/** Mutation key for chat sends — lets any view observe in-flight asks (Chat renders them as
+ * pending bubbles) and lets the cache-level handler in App.tsx invalidate after unmount. */
+export const CHAT_SEND_KEY = "chat-send";
+
 export function useSendChat() {
-  const qc = useQueryClient();
   return useMutation({
+    mutationKey: [CHAT_SEND_KEY],
     mutationFn: async (body: { content: string; company_id?: number | null }) =>
       unwrap(await api.POST("/chat/messages", { body })),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["chat"] });
-      void qc.invalidateQueries({ queryKey: ["budget"] });
-    },
   });
 }
 
@@ -138,7 +139,7 @@ export function useBriefState() {
 export function useBriefLatest() {
   return useQuery({
     queryKey: ["brief", "latest"],
-    queryFn: () => nullOn404(api.GET("/brief/latest").then(unwrap)),
+    queryFn: async () => unwrap(await api.GET("/brief/latest")),
     staleTime: 60_000,
   });
 }

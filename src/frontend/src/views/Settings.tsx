@@ -121,6 +121,7 @@ export function Settings() {
                     <button
                       key={c}
                       type="button"
+                      aria-pressed={active}
                       onClick={() => toggleRoute(shape.key, c)}
                       className={`rounded-full px-3 py-1 text-xs font-medium ring-1 ring-inset ${
                         active
