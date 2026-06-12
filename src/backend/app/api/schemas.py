@@ -179,6 +179,7 @@ class FollowupRequest(BaseModel):
 class FollowupResponse(BaseModel):
     answer: str
     sources: list[int] = []
+    source_urls: list[str] = []
 
 
 # --- Lists (Industries / watchlist views) -------------------------------------

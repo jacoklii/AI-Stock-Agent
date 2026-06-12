@@ -39,7 +39,7 @@ def _uncapped(monkeypatch) -> None:
 
 def test_open_session_returns_202_and_spawns(monkeypatch, client) -> None:
     _uncapped(monkeypatch)
-    use_session(FakeSession([FakeResult(scalar=0)]))  # active-count gate
+    use_session(FakeSession([FakeResult(scalars=[])]))  # no open sessions
 
     async def _open(session, *, topic, parent_state_id=None):
         assert topic == "nvidia supply chain"
@@ -71,11 +71,31 @@ def test_open_session_409_when_budget_exhausted(monkeypatch, client) -> None:
 
 def test_open_session_409_at_capacity(monkeypatch, client) -> None:
     _uncapped(monkeypatch)
-    use_session(FakeSession([FakeResult(scalar=3)]))  # at deep_research_max_active
+    rows = [_state_row(state_id=i) for i in (1, 2, 3)]  # at deep_research_max_active
+    for i, row in enumerate(rows):
+        row.topic = f"unrelated topic {i}"
+    use_session(FakeSession([FakeResult(scalars=rows)]))
 
     resp = client.post("/research", json={"topic": "anything material"})
     assert resp.status_code == 409
     assert "max active" in resp.json()["detail"]
+
+
+def test_open_session_dup_topic_is_idempotent(monkeypatch, client) -> None:
+    """Re-posting an open session's topic returns its state_id — no second spawn."""
+    _uncapped(monkeypatch)
+    use_session(FakeSession([FakeResult(scalars=[_state_row(state_id=7)])]))
+
+    spawned: list = []
+    monkeypatch.setattr(
+        research_routes, "_spawn", lambda coro: (spawned.append(coro), coro.close())
+    )
+
+    # Same topic up to whitespace/case — the normalized comparison absorbs both.
+    resp = client.post("/research", json={"topic": "  Nvidia   SUPPLY chain "})
+    assert resp.status_code == 202
+    assert resp.json()["state_id"] == 7
+    assert spawned == []
 
 
 def test_close_session_delegates_to_workflow(monkeypatch, client) -> None:
@@ -135,7 +155,13 @@ async def test_background_runner_persists_unflushed_answer(monkeypatch) -> None:
     async def _run(**kwargs):
         assert kwargs["resume_state_id"] == 7
         assert kwargs["initiated_by"] == "user"
-        return {"blocked": False, "paused": False, "answer": "the answer", "sources": [3]}
+        return {
+            "blocked": False,
+            "paused": False,
+            "answer": "the answer",
+            "sources": [3],
+            "source_urls": ["https://example.com/r"],
+        }
 
     class _FakeSessionLocal:
         async def __aenter__(self):
@@ -157,4 +183,11 @@ async def test_background_runner_persists_unflushed_answer(monkeypatch) -> None:
 
     body = research_routes.ResearchOpenRequest(topic="nvidia supply chain")
     await research_routes._run_user_session(7, body)
-    assert flushed == [{"state_id": 7, "findings": "the answer", "source_ids": [3]}]
+    assert flushed == [
+        {
+            "state_id": 7,
+            "findings": "the answer",
+            "source_ids": [3],
+            "source_urls": ["https://example.com/r"],
+        }
+    ]

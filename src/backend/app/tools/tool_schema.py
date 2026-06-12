@@ -186,13 +186,7 @@ class SimilarHit(BaseModel):
     similarity: float
 
 
-# --- Web / SEC / cache (deep-research external reads) ------------------------
-
-
-class WebContent(BaseModel):
-    url: str
-    content: str
-    from_cache: bool
+# --- SEC / cache (deep-research external reads) ------------------------------
 
 
 class SecFiling(BaseModel):

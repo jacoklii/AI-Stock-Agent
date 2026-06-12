@@ -42,21 +42,37 @@ class LLMProvider:
         tools: list[dict[str, Any]] | None = None,
         tool_choice: dict[str, Any] | None = None,
         max_tokens: int = 4096,
+        container: str | None = None,
+        extra_headers: dict[str, str] | None = None,
     ) -> Any:
         """One round-trip to the model. Returns the raw Anthropic response (the agent reads
         ``.content`` blocks and ``.stop_reason``). Optional ``tools``/``tool_choice`` drive the
-        tool-use loop the agent runs."""
+        tool-use loop the agent runs.
+
+        Prompt caching is always on (top-level ``cache_control``): the request prefix renders
+        tools -> system -> messages, and the API auto-caches up to the last cacheable block. In
+        the agent's loop the tool list and system prompt are frozen and the conversation only
+        grows, so iteration N reads iteration N-1's prefix at ~0.1x input price and writes one
+        small increment at 1.25x. ``tool_choice`` flips don't invalidate the cache; tool-list
+        changes do — which is why callers must keep ``tools`` byte-stable across a loop."""
         client = self._ensure_client()
         kwargs: dict[str, Any] = {
             "model": model,
             "system": system,
             "messages": messages,
             "max_tokens": max_tokens,
+            "cache_control": {"type": "ephemeral"},
         }
         if tools is not None:
             kwargs["tools"] = tools
         if tool_choice is not None:
             kwargs["tool_choice"] = tool_choice
+        if container is not None:
+            # Server-side tools (web fetch) execute in a server container; a turn that pauses
+            # with pending tool uses can only resume against the same container id.
+            kwargs["container"] = container
+        if extra_headers is not None:
+            kwargs["extra_headers"] = extra_headers
         return await client.messages.create(**kwargs)
 
 

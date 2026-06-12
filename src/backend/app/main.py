@@ -28,6 +28,10 @@ from app.api.routes import (
 from app.config import get_settings
 from app.db.session import engine
 
+# App-module logs (workflow progress, the agent's "server tools ran" line) go through the root
+# logger; without a handler they'd be dropped above WARNING. Uvicorn's own loggers are untouched.
+logging.basicConfig(level=logging.INFO, format="%(levelname)s:     %(name)s - %(message)s")
+
 logger = logging.getLogger(__name__)
 
 

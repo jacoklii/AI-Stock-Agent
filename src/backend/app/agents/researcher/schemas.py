@@ -49,10 +49,11 @@ class CompanyProseOut(BaseModel):
 
 
 class FollowupOut(BaseModel):
-    """A scoped follow-up answer, with the source event IDs it drew on."""
+    """A scoped follow-up answer, with the source event IDs and/or web URLs it drew on."""
 
     answer: str
     sources: list[int] = Field(default_factory=list)
+    source_urls: list[str] = Field(default_factory=list)
 
 
 class DeepResearchOut(BaseModel):
@@ -68,4 +69,5 @@ class DeepResearchOut(BaseModel):
     findings: str = ""
     open_questions: str = ""
     sources: list[int] = Field(default_factory=list)
+    source_urls: list[str] = Field(default_factory=list)
     status: Literal["complete", "paused"] = "complete"

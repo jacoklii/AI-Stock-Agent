@@ -26,14 +26,12 @@ from app.providers.embeddings import get_embeddings_provider
 from app.providers.market import get_market_provider
 from app.providers.notifier import get_notifier
 from app.providers.sec import get_sec_provider
-from app.providers.web import get_web_provider
 from app.tools.registry import ToolSpec
 
 # Injected (pre-``*``) parameter name -> factory. ``session`` is handled separately.
 _PROVIDER_FACTORIES = {
     "market_provider": get_market_provider,
     "embeddings_provider": get_embeddings_provider,
-    "web_provider": get_web_provider,
     "sec_provider": get_sec_provider,
     "notifier": get_notifier,
 }

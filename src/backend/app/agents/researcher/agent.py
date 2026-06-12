@@ -19,6 +19,7 @@ This is "orchestrated pipelines + autonomous-within-task," not open agent planni
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -45,25 +46,51 @@ from app.tools.registry import (
 
 _PROMPT_DIR = Path(__file__).parent
 
+logger = logging.getLogger(__name__)
+
+# Anthropic server-side web tools, attached to web-enabled tasks (``TaskSpec.web``). They run
+# inside the model's turn on Anthropic's infrastructure — never through the client allowlist or
+# ``invoke_tool``. One module-level constant so the tool list keeps a stable byte identity across
+# loop iterations (a changing tool list would invalidate the prompt cache).
+# Searches bill per-use on the Anthropic account ($10/1k), outside the token budget.
+_SERVER_WEB_TOOLS: list[dict[str, Any]] = [
+    {"type": "web_search_20260209", "name": "web_search", "max_uses": 5},
+    {"type": "web_fetch_20260209", "name": "web_fetch", "max_uses": 10, "max_content_tokens": 25_000},
+]
+
 # Reflection: how many times to send a finding back for citations before accepting it anyway.
 _MAX_GROUNDING_NUDGES = 1
 _GROUNDING_NUDGE = (
-    "Every finding must cite the news_event ids it draws on. Add them to `sources`, then resubmit."
+    "Every finding must be grounded: cite the news_event ids it draws on in `sources` and/or "
+    "the web pages it draws on in `source_urls`. Add them, then resubmit."
 )
 
 
 def _needs_grounding(out: BaseModel) -> bool:
-    """True when an output has findings but no cited sources (the deep-research grounding rule)."""
+    """True when an output has findings but cites nothing — neither news ids (``sources``) nor
+    external pages (``source_urls``). Either kind of citation grounds a finding."""
     findings = getattr(out, "findings", None)
+    if not findings:
+        return False
     sources = getattr(out, "sources", None)
-    return bool(findings) and sources is not None and len(sources) == 0
+    source_urls = getattr(out, "source_urls", None)
+    if sources or source_urls:
+        return False
+    return sources is not None or source_urls is not None
 
 
 def _usage_tokens(resp: Any) -> int:
+    """Effective cost-weighted tokens for one call: cache writes cost 1.25x a plain input token,
+    cache reads 0.1x. This is what ``Budget`` accumulates and what lands in ``tasks.tokens_used``
+    — uncached calls reduce to input+output, so pre-caching rows stay comparable."""
     usage = getattr(resp, "usage", None)
     if usage is None:
         return 0
-    return (getattr(usage, "input_tokens", 0) or 0) + (getattr(usage, "output_tokens", 0) or 0)
+    inp = getattr(usage, "input_tokens", 0) or 0
+    out = getattr(usage, "output_tokens", 0) or 0
+    cache_write = getattr(usage, "cache_creation_input_tokens", 0) or 0
+    cache_read = getattr(usage, "cache_read_input_tokens", 0) or 0
+    return round(inp + out + 1.25 * cache_write + 0.1 * cache_read)
 
 
 @dataclass(frozen=True)
@@ -78,6 +105,9 @@ class TaskSpec:
     # Per-task loop bound; ``None`` falls back to the agent default (``agent_max_tool_iters``).
     # Deep research self-paces over many steps, so it sets a larger one.
     max_iters: int | None = None
+    # Attach the Anthropic server-side web tools (search + fetch). Only the externally-facing
+    # research tasks get the open web; ingest/synthesis tasks stay on internal data.
+    web: bool = False
 
 
 # Model choice mirrors the architecture: Haiku for high-volume ingest, Sonnet/Opus for synthesis.
@@ -101,7 +131,7 @@ TASKS: dict[str, TaskSpec] = {
         TASK_TOP_SNAPSHOT, "prompt_top_snapshot.md", MODEL_OPUS, schemas.SnapshotOut
     ),
     TASK_FOLLOWUP: TaskSpec(
-        TASK_FOLLOWUP, "prompt_followup.md", MODEL_SONNET, schemas.FollowupOut
+        TASK_FOLLOWUP, "prompt_followup.md", MODEL_SONNET, schemas.FollowupOut, web=True
     ),
     TASK_DEEP_RESEARCH: TaskSpec(
         TASK_DEEP_RESEARCH,
@@ -109,6 +139,7 @@ TASKS: dict[str, TaskSpec] = {
         MODEL_SONNET,
         schemas.DeepResearchOut,
         max_iters=DEEP_RESEARCH_MAX_ITERS,
+        web=True,
     ),
 }
 
@@ -165,17 +196,30 @@ class Researcher:
             {"name": t.name, "description": t.description, "input_schema": tool_json_schema(t)}
             for t in allowlist.values()
         ] + [submit]
+        if spec.web:
+            # Server-side tools execute on Anthropic's side; they are NOT in the allowlist and
+            # never pass through _run_tool. The list must stay identical every iteration —
+            # appending here (not mutating per attempt) keeps the prompt-cache prefix stable.
+            tools = tools + _SERVER_WEB_TOOLS
 
         system = _load_prompt(spec.prompt_file)
         messages: list[dict[str, Any]] = [
             {"role": "user", "content": json.dumps(_jsonable(inputs), default=str)}
         ]
         grounding_nudges = 0
+        # Server-side web tools execute in a server container; once a response carries its id,
+        # every later call in this task must send it back or a paused turn cannot resume.
+        container_id: str | None = None
+        server_paused = False
 
         for attempt in range(max_iters):
             # Force the submit tool on the last attempt, or once the budget ceiling is hit, so we
-            # always end with structured output and never overspend.
-            force_submit = attempt == max_iters - 1 or (budget is not None and budget.over())
+            # always end with structured output and never overspend. Never force while a server
+            # turn is paused — the API rejects a tool_choice over pending server tool uses; the
+            # force defers to the next iteration instead.
+            force_submit = not server_paused and (
+                attempt == max_iters - 1 or (budget is not None and budget.over())
+            )
             resp = await self._llm.create(
                 model=spec.model,
                 system=system,
@@ -185,10 +229,24 @@ class Researcher:
                     {"type": "tool", "name": submit["name"]} if force_submit else {"type": "auto"}
                 ),
                 max_tokens=max_tokens,
+                container=container_id,
             )
             if budget is not None:
                 budget.add(_usage_tokens(resp))
             messages.append({"role": "assistant", "content": resp.content})
+            container_id = getattr(getattr(resp, "container", None), "id", None) or container_id
+
+            server_uses = [
+                b.name for b in resp.content if getattr(b, "type", None) == "server_tool_use"
+            ]
+            if server_uses:
+                logger.info("server tools ran for %s: %s", task_name, server_uses)
+            server_paused = getattr(resp, "stop_reason", None) == "pause_turn"
+            if server_paused:
+                # A long server-tool turn was checkpointed mid-flight. Re-send the conversation
+                # unchanged (no user message) and the server resumes where it left off — this
+                # must not fall through to the "no tool_uses -> nudge" branch below.
+                continue
 
             tool_uses = [b for b in resp.content if getattr(b, "type", None) == "tool_use"]
             if not tool_uses:

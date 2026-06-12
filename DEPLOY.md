@@ -15,8 +15,8 @@ internet → Caddy :443 (TLS + basic auth) → /api/* → api:8000
 - A GCP project with billing enabled, `gcloud` authenticated (`gcloud auth login`).
 - A domain you control (any registrar) — one A record will point at the VM.
 - Credentials for the VM's `.env`: `ANTHROPIC_API_KEY`, `VOYAGE_API_KEY`, `FINNHUB_API_KEY`,
-  `WEB_SEARCH_API_KEY`, SMTP credentials (e.g. a Gmail app password), and a strong
-  `POSTGRES_PASSWORD`.
+  `SEC_USER_AGENT` (your "app-name (contact-email)" for EDGAR), SMTP credentials (e.g. a
+  Gmail app password), and a strong `POSTGRES_PASSWORD`.
 - Git access from the VM (public repo, or add a deploy key).
 
 ## 1. Reserve the IP and create the VM

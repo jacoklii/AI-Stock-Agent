@@ -74,6 +74,8 @@ async def post_message(
                 await session.execute(select(NewsEvent.url).where(NewsEvent.id.in_(out.sources)))
             ).scalars()
         )
+    # External pages the agent consulted (server-side web tools) ride along with article URLs.
+    urls = list(dict.fromkeys([*urls, *out.source_urls]))
     assistant_row = ChatMessage(
         role=ChatRole.assistant,
         content=out.answer,

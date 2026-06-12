@@ -119,12 +119,16 @@ async def test_failed_session_still_closes(monkeypatch) -> None:
 
 
 async def test_pause_safety_net_flushes_only_when_state_is_empty(monkeypatch) -> None:
-    out = DeepResearchOut(answer="partial", findings="f", status="paused")
+    out = DeepResearchOut(
+        answer="partial", findings="f", status="paused", source_urls=["https://example.com/r"]
+    )
 
-    # Agent flushed nothing: the submitted output is persisted so resume has a footing.
+    # Agent flushed nothing: the submitted output is persisted so resume has a footing —
+    # including the external URLs it cited.
     recorded = _patch_seams(monkeypatch, out=out, state_findings=None)
     await deep_research.run(query="q", initiated_by="schedule")
     assert len(recorded["flushed"]) == 1
+    assert recorded["flushed"][0]["source_urls"] == ["https://example.com/r"]
 
     # Agent flushed during the session: no second write, appends stay non-duplicative.
     recorded = _patch_seams(monkeypatch, out=out, state_findings="already flushed")

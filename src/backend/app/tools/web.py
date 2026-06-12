@@ -1,11 +1,14 @@
-"""Deep-research external-read tools: web search/fetch, SEC filings, and the TTL cache.
+"""Deep-research external-read tools: SEC filings and the TTL cache.
 
-These are the agent's cache-first window onto the outside world. ``web_fetch`` and
-``fetch_sec_filing`` check the ``cache`` table first and only hit the network on a miss/expiry,
-then store the result — so repeated reads inside a research session are cheap and the cache stays
-the single place external content lives (persistent storage keeps only extracted findings).
+These are the agent's cache-first window onto EDGAR. ``fetch_sec_filing`` checks the ``cache``
+table first and only hits the network on a miss/expiry, then stores the result — so repeated
+reads inside a research session are cheap and the cache stays the single place external content
+lives (persistent storage keeps only extracted findings).
 
-``cache_get`` is read-only; ``web_fetch`` / ``fetch_sec_filing`` / ``cache_set`` write the cache
+General web search/fetch are NOT client tools: they run server-side inside the model's turn
+(Anthropic ``web_search``/``web_fetch``), attached per task by the researcher agent.
+
+``cache_get`` is read-only; ``fetch_sec_filing`` / ``cache_set`` write the cache
 (``writes=True``) — the one effect these tools have. They never touch production-data tables.
 """
 
@@ -19,9 +22,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.cache import Cache
 from app.providers.sec import SECProvider
-from app.providers.web import WebResult, WebSearchProvider
-from app.tools.registry import TASK_DEEP_RESEARCH, TASK_FOLLOWUP, tool
-from app.tools.tool_schema import CacheEntry, SecFiling, WebContent
+from app.tools.registry import TASK_DEEP_RESEARCH, tool
+from app.tools.tool_schema import CacheEntry, SecFiling
 
 # Default time-to-live for newly cached content (1 day). Web reads are findings-first; a day
 # keeps a research session cheap without serving stale external content across sessions.
@@ -67,36 +69,6 @@ async def _store(session: AsyncSession, url: str, content: str, ttl_seconds: int
         row.fetched_at = now
     await session.commit()
     return _entry(row)
-
-
-@tool(
-    name="web_search",
-    description="Ranked web search results for a query (title, url, snippet).",
-    tasks={TASK_FOLLOWUP, TASK_DEEP_RESEARCH},
-    output_model=WebResult,
-)
-async def web_search(
-    web_provider: WebSearchProvider, *, query: str, k: int = 5
-) -> list[WebResult]:
-    return await web_provider.search(query, k=k)
-
-
-@tool(
-    name="web_fetch",
-    description="Readable text of a URL, cache-first (fetches and caches only on a miss/expiry).",
-    tasks={TASK_DEEP_RESEARCH},
-    output_model=WebContent,
-    writes=True,
-)
-async def web_fetch(
-    session: AsyncSession, web_provider: WebSearchProvider, *, url: str
-) -> WebContent:
-    cached = await _lookup(session, url)
-    if cached is not None and not cached.expired:
-        return WebContent(url=url, content=cached.content, from_cache=True)
-    content = await web_provider.fetch(url)
-    await _store(session, url, content, _DEFAULT_TTL_SECONDS)
-    return WebContent(url=url, content=content, from_cache=False)
 
 
 @tool(

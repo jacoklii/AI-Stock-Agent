@@ -9,23 +9,32 @@ for citations before being accepted.
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 
 from app.agents.researcher import agent as agent_mod
-from app.tools.registry import TASK_DEEP_RESEARCH, TASK_FOLLOWUP
+from app.tools.registry import TASK_ARTICLE_SUMMARY, TASK_DEEP_RESEARCH, TASK_FOLLOWUP
 
 
 class _Block:
-    def __init__(self, name: str, input: dict, id: str = "tu_1") -> None:
-        self.type = "tool_use"
+    def __init__(self, name: str, input: dict, id: str = "tu_1", type: str = "tool_use") -> None:
+        self.type = type
         self.name = name
         self.input = input
         self.id = id
 
 
 class _Resp:
-    def __init__(self, *blocks: _Block) -> None:
+    def __init__(
+        self,
+        *blocks: _Block,
+        stop_reason: str | None = None,
+        usage: object = None,
+        container_id: str | None = None,
+    ) -> None:
         self.content = list(blocks)
-        self.usage = None
+        self.usage = usage
+        self.stop_reason = stop_reason
+        self.container = SimpleNamespace(id=container_id) if container_id else None
 
 
 class _ScriptedLLM:
@@ -76,9 +85,88 @@ async def test_invalid_submit_is_bounced_for_correction() -> None:
 async def test_ungrounded_findings_are_nudged_for_citations() -> None:
     submit = {"answer": "a", "findings": "f", "open_questions": ""}
     llm = _ScriptedLLM(
-        _Resp(_Block("submit_deep_research", {**submit, "sources": []})),
+        _Resp(_Block("submit_deep_research", {**submit, "sources": [], "source_urls": []})),
         _Resp(_Block("submit_deep_research", {**submit, "sources": [7]})),
     )
     out = await agent_mod.Researcher(llm=llm).run_task(TASK_DEEP_RESEARCH, inputs={"query": "q"})
     assert out.sources == [7]
     assert "cite" in _last_tool_result(llm.calls[1])["content"]
+
+
+async def test_url_only_grounding_is_accepted() -> None:
+    """Findings cited by external URLs alone (no stored events) are grounded — no nudge."""
+    submit = {
+        "answer": "a",
+        "findings": "f",
+        "sources": [],
+        "source_urls": ["https://example.com/report"],
+    }
+    llm = _ScriptedLLM(_Resp(_Block("submit_deep_research", submit)))
+    out = await agent_mod.Researcher(llm=llm).run_task(TASK_DEEP_RESEARCH, inputs={"query": "q"})
+    assert out.source_urls == ["https://example.com/report"]
+    assert len(llm.calls) == 1
+
+
+async def test_server_web_tools_attached_only_for_web_tasks() -> None:
+    llm = _ScriptedLLM(_Resp(_Block("submit_followup", {"answer": "ok", "sources": [1]})))
+    await agent_mod.Researcher(llm=llm).run_task(TASK_FOLLOWUP, inputs={"query": "q"})
+    types = {t.get("type") for t in llm.calls[0]["tools"]}
+    assert {"web_search_20260209", "web_fetch_20260209"} <= types
+
+    llm = _ScriptedLLM(_Resp(_Block(f"submit_{TASK_ARTICLE_SUMMARY}", {"summary": "s"})))
+    await agent_mod.Researcher(llm=llm).run_task(TASK_ARTICLE_SUMMARY, inputs={"text": "t"})
+    assert all(t.get("type") is None for t in llm.calls[0]["tools"])
+
+
+async def test_pause_turn_resumes_without_user_nudge() -> None:
+    """A pause_turn mid server-tool turn re-sends the conversation unchanged — the loop must
+    not mistake it for a no-tool answer and inject a user nudge."""
+    paused = _Resp(
+        _Block("web_search", {"query": "spacex"}, id="st_1", type="server_tool_use"),
+        stop_reason="pause_turn",
+    )
+    llm = _ScriptedLLM(
+        paused, _Resp(_Block("submit_followup", {"answer": "ok", "sources": [1]}))
+    )
+    out = await agent_mod.Researcher(llm=llm).run_task(TASK_FOLLOWUP, inputs={"query": "q"})
+    assert out.answer == "ok"
+    assert llm.calls[1]["messages"][-1]["role"] == "assistant"
+
+
+async def test_paused_server_turn_defers_force_and_carries_container() -> None:
+    """While a server turn is paused: the response's container id rides every later call, and a
+    budget-triggered forced submit defers (a tool_choice over pending server uses is a 400)."""
+    from app.agents.budget import Budget
+
+    over = SimpleNamespace(input_tokens=10, output_tokens=10)  # busts the ceiling immediately
+    paused = _Resp(
+        _Block("web_fetch", {"url": "https://x"}, id="st_1", type="server_tool_use"),
+        stop_reason="pause_turn",
+        usage=over,
+        container_id="cont_1",
+    )
+    llm = _ScriptedLLM(
+        paused, _Resp(_Block("submit_followup", {"answer": "ok", "sources": [1]}))
+    )
+    out = await agent_mod.Researcher(llm=llm).run_task(
+        TASK_FOLLOWUP, inputs={"query": "q"}, budget=Budget(ceiling=1)
+    )
+    assert out.answer == "ok"
+    assert llm.calls[0]["container"] is None
+    assert llm.calls[1]["container"] == "cont_1"
+    assert llm.calls[1]["tool_choice"] == {"type": "auto"}  # force deferred past the pause
+
+
+def test_usage_tokens_are_cost_weighted() -> None:
+    """Effective tokens: input + output + 1.25x cache writes + 0.1x cache reads."""
+    usage = SimpleNamespace(
+        input_tokens=100,
+        output_tokens=10,
+        cache_creation_input_tokens=1000,
+        cache_read_input_tokens=10_000,
+    )
+    assert agent_mod._usage_tokens(SimpleNamespace(usage=usage)) == 2360
+    # Responses without cache fields (or with them unset) reduce to input+output.
+    plain = SimpleNamespace(input_tokens=5, output_tokens=2)
+    assert agent_mod._usage_tokens(SimpleNamespace(usage=plain)) == 7
+    assert agent_mod._usage_tokens(SimpleNamespace(usage=None)) == 0

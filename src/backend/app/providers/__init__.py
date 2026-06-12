@@ -1,8 +1,9 @@
 """External-API wrappers.
 
 Every external dependency goes behind exactly one internal wrapper before its first use, so
-a provider swap (yFinance, Voyage, Anthropic, Finnhub, Tavily, EDGAR, a notifier) touches a
-single file. Wrappers expose a stable, provider-agnostic surface; the third-party library is an
+a provider swap (yFinance, Voyage, Anthropic, Finnhub, EDGAR, a notifier) touches a
+single file. Web search/fetch are Anthropic server-side tools — they ride the LLM wrapper,
+no separate provider. Wrappers expose a stable, provider-agnostic surface; the third-party library is an
 implementation detail kept inside the module.
 """
 
@@ -14,7 +15,6 @@ from app.providers.market import MarketDataProvider, Quote, get_market_provider
 from app.providers.news import NewsProvider, RawNewsItem, get_news_provider
 from app.providers.notifier import Notifier, SendReceipt, get_notifier
 from app.providers.sec import FilingRef, SECProvider, get_sec_provider
-from app.providers.web import WebResult, WebSearchProvider, get_web_provider
 
 __all__ = [
     "MarketDataProvider",
@@ -31,9 +31,6 @@ __all__ = [
     "Notifier",
     "SendReceipt",
     "get_notifier",
-    "WebSearchProvider",
-    "WebResult",
-    "get_web_provider",
     "SECProvider",
     "FilingRef",
     "get_sec_provider",

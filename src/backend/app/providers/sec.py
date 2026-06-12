@@ -11,11 +11,14 @@ Transport only — no caching, no summarizing (the tool layer caches; the agent 
 
 from __future__ import annotations
 
+import logging
 from datetime import date
 
 from pydantic import BaseModel
 
 from app.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 _TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
 _SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik:010d}.json"
@@ -34,7 +37,12 @@ class SECProvider:
     """Stable surface over EDGAR submissions + document fetch."""
 
     def __init__(self) -> None:
-        self._headers = {"User-Agent": get_settings().sec_user_agent}
+        ua = get_settings().sec_user_agent
+        if "set SEC_USER_AGENT" in ua:
+            logger.warning(
+                "SEC_USER_AGENT is the placeholder default; EDGAR will return 403 — set it in .env"
+            )
+        self._headers = {"User-Agent": ua}
 
     async def _resolve_cik(self, client, ticker: str) -> int | None:
         resp = await client.get(_TICKERS_URL)

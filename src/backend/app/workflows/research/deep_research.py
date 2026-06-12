@@ -95,15 +95,20 @@ async def _promote(
     findings: str | None,
     open_questions: str | None,
     sources: list[int],
+    source_urls: list[str] | None = None,
     model_name: str,
 ) -> None:
     """Autonomous close: write a session's findings into the durable ``analysis`` record.
-    Field arguments so both a submitted output and a stale state row can be promoted."""
+    Field arguments so both a submitted output and a stale state row can be promoted.
+    ``source_urls`` from a submitted output merge with whatever the session flushed."""
     text = findings or answer or ""
     embeddings = get_embeddings_provider()
     async with SessionLocal() as session:
         state = await get_research_state(session, state_id=state_id)
         embedded = await embeddings.embed_query(text) if text else None
+        urls = list(
+            dict.fromkeys([*(state.source_urls if state else []), *(source_urls or [])])
+        )
         session.add(
             Analysis(
                 type=AnalysisType.summary,
@@ -115,7 +120,7 @@ async def _promote(
                 ),
                 supporting_inputs=AnalysisSupportingInputs(
                     news_event_ids=sources,
-                    source_refs=state.source_urls if state else [],
+                    source_refs=urls,
                 ),
                 model_name=model_name,
                 embedding=embedded.vector if embedded else None,
@@ -192,8 +197,10 @@ async def run(
                 inputs["candidates"] = candidates
             out = await get_researcher().run_task(TASK_DEEP_RESEARCH, inputs=inputs, budget=budget)
         finally:
-            # Record spend always. Close the session (embedding its findings) on completion or
-            # failure — but a *paused* session stays open so the next wakeup resumes it.
+            # Record spend always — effective (cost-weighted) tokens: cache writes at 1.25x,
+            # cache reads at 0.1x (see agent._usage_tokens), so tokens_used tracks real cost.
+            # Close the session (embedding its findings) on completion or failure — but a
+            # *paused* session stays open so the next wakeup resumes it.
             task.tokens = budget.spent
             paused = out is not None and out.status == "paused"
             if not paused:
@@ -212,9 +219,10 @@ async def run(
                         findings=out.findings or None,
                         open_questions=out.open_questions or None,
                         source_ids=out.sources or None,
+                        source_urls=out.source_urls or None,
                     )
             task.message("paused")
-            return {"blocked": False, "paused": True, "answer": out.answer, "sources": out.sources, "state_id": state_id}
+            return {"blocked": False, "paused": True, "answer": out.answer, "sources": out.sources, "source_urls": out.source_urls, "state_id": state_id}
 
         if initiated_by != "user":
             await _promote(
@@ -223,11 +231,12 @@ async def run(
                 findings=out.findings,
                 open_questions=out.open_questions,
                 sources=out.sources,
+                source_urls=out.source_urls,
                 model_name=model_name,
             )
             task.count("promoted")
         task.message("answered")
-        return {"blocked": False, "paused": False, "answer": out.answer, "sources": out.sources, "state_id": state_id}
+        return {"blocked": False, "paused": False, "answer": out.answer, "sources": out.sources, "source_urls": out.source_urls, "state_id": state_id}
 
 
 async def close_user_session(state_id: int, *, promote: bool = False) -> dict:

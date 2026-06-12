@@ -347,6 +347,8 @@ export interface paths {
          *
          *     Gates are checked synchronously so a blocked request fails loudly here instead of silently
          *     in the background: 409 when the weekly budget is exhausted or the active-session cap is hit.
+         *     Re-posting the topic of an already-open session is idempotent — the existing ``state_id``
+         *     comes back instead of a duplicate session (absorbs double-submits).
          */
         post: operations["open_session_research_post"];
         delete?: never;
@@ -756,6 +758,11 @@ export interface components {
              * @default []
              */
             sources: number[];
+            /**
+             * Source Urls
+             * @default []
+             */
+            source_urls: string[];
         };
         /** HTTPValidationError */
         HTTPValidationError: {

@@ -8,6 +8,11 @@ running unbounded.
 
 ``None`` ceiling means "no cap" — the budget still accumulates ``spent`` (so it's recorded on the
 task), it just never forces a stop.
+
+Units are *effective* (cost-weighted) tokens: ``input + output + 1.25*cache_write +
+0.1*cache_read`` (see ``agent._usage_tokens``) — proportional to dollars rather than raw counts.
+An uncached call reduces to input+output, so rows recorded before prompt caching stay comparable.
+Server-side web searches bill per-search on the Anthropic account, outside this budget.
 """
 
 from __future__ import annotations

@@ -33,7 +33,7 @@ from app.tools.state import (
     open_research,
     update_research,
 )
-from app.tools.web import cache_get, cache_set, fetch_sec_filing, web_fetch, web_search
+from app.tools.web import cache_get, cache_set, fetch_sec_filing
 
 __all__ = [
     "REGISTRY",
@@ -54,9 +54,7 @@ __all__ = [
     "get_score_history",
     "get_latest_prose",
     "get_latest_analysis",
-    # web / sec / cache
-    "web_search",
-    "web_fetch",
+    # sec / cache
     "fetch_sec_filing",
     "cache_get",
     "cache_set",

@@ -128,7 +128,7 @@ One agent (`researcher`). Same agent across all tasks; the prompt, model, and to
 - `screen_stocks`, `search_similar` — semantic search over stored summaries, analysis, and research state.
 - `get_latest_scores`, `get_score_history`, `get_latest_analysis`.
 - `significance` — fast Haiku classifier. Answers: does this event clear the ingest threshold? Returns a score; below threshold the event is dropped and nothing else runs.
-- `web_search`, `web_fetch`, `fetch_sec_filing`, `fetch_transcript` — used in deep research; cache-first.
+- `fetch_sec_filing`, `fetch_transcript` — used in deep research; cache-first. (General `web_search`/`web_fetch` are Anthropic server-side tools attached to web-enabled tasks, not client tools.)
 - `cache_get`, `cache_set` — TTL cache for external content.
 - `open_research`, `update_research`, `close_research` — agent state across sessions.
 - `send_email`, `send_imessage`, `send_whatsapp` — dedup via `notifications` table before sending.
@@ -198,7 +198,7 @@ Embedding model name stored alongside every vector.
 - **yFinance** — prices, financials.
 - **Finnhub** — news, sentiment, catalyst calendar.
 - **Anthropic API** — Claude models.
-- **Web search** — TBD; choose based on codebase (Tavily / Brave Search).
+- **Web search/fetch** — Anthropic server-side tools (`web_search`/`web_fetch`), billed to the same API key; no separate provider.
 - **SEC EDGAR** — filings, direct.
 - **Notification providers** — SMTP, iMessage bridge, WhatsApp.
 

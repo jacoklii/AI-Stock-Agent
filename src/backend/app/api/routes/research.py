@@ -16,7 +16,7 @@ from __future__ import annotations
 import asyncio
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.budget import remaining_weekly_budget
@@ -176,7 +176,12 @@ async def _run_user_session(state_id: int, body: ResearchOpenRequest) -> None:
                 state_id=state_id,
                 findings=result["answer"],
                 source_ids=result.get("sources") or None,
+                source_urls=result.get("source_urls") or None,
             )
+
+
+def _norm_topic(topic: str) -> str:
+    return " ".join(topic.split()).casefold()
 
 
 @router.post("/research", response_model=ResearchOpenResponse, status_code=202)
@@ -187,19 +192,26 @@ async def open_session(
 
     Gates are checked synchronously so a blocked request fails loudly here instead of silently
     in the background: 409 when the weekly budget is exhausted or the active-session cap is hit.
+    Re-posting the topic of an already-open session is idempotent — the existing ``state_id``
+    comes back instead of a duplicate session (absorbs double-submits).
     """
     remaining = await remaining_weekly_budget(session)
     if remaining is not None and remaining <= 0:
         raise HTTPException(status_code=409, detail="weekly token budget exhausted")
 
-    active = (
-        await session.execute(
-            select(func.count())
-            .select_from(ResearchState)
-            .where(ResearchState.status == StateStatus.open)
+    open_rows = (
+        (
+            await session.execute(
+                select(ResearchState).where(ResearchState.status == StateStatus.open)
+            )
         )
-    ).scalar_one()
-    if active >= get_settings().deep_research_max_active:
+        .scalars()
+        .all()
+    )
+    for row in open_rows:
+        if _norm_topic(row.topic) == _norm_topic(body.topic):
+            return ResearchOpenResponse(state_id=row.id)
+    if len(open_rows) >= get_settings().deep_research_max_active:
         raise HTTPException(status_code=409, detail="max active research sessions reached")
 
     opened = await open_research(session, topic=body.topic)
@@ -254,4 +266,4 @@ async def followup(body: FollowupRequest) -> FollowupResponse:
     out = await followup_wf.run(
         query=body.query, company_id=body.company_id, industry_id=body.industry_id
     )
-    return FollowupResponse(answer=out.answer, sources=out.sources)
+    return FollowupResponse(answer=out.answer, sources=out.sources, source_urls=out.source_urls)
