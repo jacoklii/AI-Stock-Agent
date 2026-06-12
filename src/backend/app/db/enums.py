@@ -47,6 +47,11 @@ class Channel(str, enum.Enum):
     in_app = "in_app"
 
 
+class ChatRole(str, enum.Enum):
+    user = "user"
+    assistant = "assistant"
+
+
 class PeriodType(str, enum.Enum):
     annual = "annual"
     quarterly = "quarterly"
@@ -75,6 +80,7 @@ state_status_enum = _pg_enum(StateStatus, "state_status")
 analysis_type_enum = _pg_enum(AnalysisType, "analysis_type")
 task_status_enum = _pg_enum(TaskStatus, "task_status")
 channel_enum = _pg_enum(Channel, "channel")
+chat_role_enum = _pg_enum(ChatRole, "chat_role")
 period_type_enum = _pg_enum(PeriodType, "period_type")
 calendar_event_type_enum = _pg_enum(CalendarEventType, "calendar_event_type")
 
@@ -85,6 +91,7 @@ ALL_ENUMS: list[tuple[type[enum.Enum], str]] = [
     (AnalysisType, "analysis_type"),
     (TaskStatus, "task_status"),
     (Channel, "channel"),
+    (ChatRole, "chat_role"),
     (PeriodType, "period_type"),
     (CalendarEventType, "calendar_event_type"),
 ]

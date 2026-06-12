@@ -1,0 +1,7 @@
+@import "tailwindcss";
+
+/* Information-dense defaults; the agent's text artifacts keep their line breaks. */
+.prose-snapshot {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

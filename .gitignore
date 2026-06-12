@@ -14,5 +14,9 @@ venv/
 .ruff_cache/
 .mypy_cache/
 
+# Node (frontend) — src/api/schema.d.ts is generated but committed by design
+node_modules/
+src/frontend/dist/
+
 # OS / editor
 .DS_Store

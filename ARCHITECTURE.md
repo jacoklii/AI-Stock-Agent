@@ -107,6 +107,16 @@ Every company has a `coverage_tier` that controls what the system fetches and sc
 **Interactions** — chat, watchlist + industries editing, brief stocks/mega-cap editing, research open/redirect/close, raise/lower weekly budget, open any article URL.
  
 **Notifications** — email digest (snapshot + section snapshots + article list with summaries), brief on iMessage/WhatsApp, in-app inbox mirror. Freshness timestamps everywhere; stale data looks stale.
+
+**Implementation (v1, shipped)** — React + Vite SPA (`src/frontend/`) talking only to the FastAPI
+layer via `/api/*` (prefix stripped at the proxy: Vite dev server, nginx in the web container,
+Caddy in prod). Status surfaces poll the `tasks` ledger (TanStack Query; no sockets). Chat v1 is
+the persistent thread answered by the lightweight `followup` workflow, with explicit adjacent
+actions ("go deeper" → research session; redirect/close on the session view) rather than
+NL-intent parsing. Channel routing lives on `UserPreferences.channels` (`digest_channels` /
+`brief_channels`); on a cloud host the brief goes email + in-app — iMessage requires a macOS
+host, WhatsApp stays stubbed until Business-API credentials exist. Deployment: one GCE VM,
+docker compose, Caddy terminating TLS with basic auth (see `DEPLOY.md`).
  
 ### 2. Application
  

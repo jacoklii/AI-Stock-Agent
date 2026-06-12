@@ -27,6 +27,7 @@ WF_RESCORE = "company_rescore"
 WF_PROSE_REGEN = "prose_regeneration"
 WF_SIGNIFICANCE_RECHECK = "significance_recheck"
 WF_DEEP_RESEARCH = "deep_research"
+WF_FOLLOWUP = "followup"
 
 
 class TriggerKind(str, enum.Enum):
@@ -155,6 +156,13 @@ register_trigger(Trigger(
     kind=TriggerKind.on_demand,
     workflow=WF_DEEP_RESEARCH,
     description="Interface request: open a bounded research session, state-first then external.",
+    source="interface",
+))
+register_trigger(Trigger(
+    name="chat_followup",
+    kind=TriggerKind.on_demand,
+    workflow=WF_FOLLOWUP,
+    description="Chat question: lightweight scoped answer; no session opened, nothing promoted.",
     source="interface",
 ))
 register_trigger(Trigger(

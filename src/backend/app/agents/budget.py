@@ -36,6 +36,17 @@ class Budget:
         return self.ceiling is not None and self.spent >= self.ceiling
 
 
+async def spent_last_7_days(session: AsyncSession) -> int:
+    """Tokens recorded on ``tasks`` rows started in the last 7 days — the real spend."""
+    since = datetime.now(timezone.utc) - timedelta(days=7)
+    spent = (
+        await session.execute(
+            select(func.coalesce(func.sum(Task.tokens_used), 0)).where(Task.started_at >= since)
+        )
+    ).scalar_one()
+    return int(spent)
+
+
 async def remaining_weekly_budget(session: AsyncSession) -> int | None:
     """The user's weekly token budget minus tokens spent in the last 7 days.
 
@@ -46,11 +57,4 @@ async def remaining_weekly_budget(session: AsyncSession) -> int | None:
     ).scalar_one_or_none()
     if prefs is None or prefs.weekly_token_budget is None:
         return None
-
-    since = datetime.now(timezone.utc) - timedelta(days=7)
-    spent = (
-        await session.execute(
-            select(func.coalesce(func.sum(Task.tokens_used), 0)).where(Task.started_at >= since)
-        )
-    ).scalar_one()
-    return prefs.weekly_token_budget - int(spent)
+    return prefs.weekly_token_budget - await spent_last_7_days(session)

@@ -10,9 +10,10 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
+from app.agents.researcher.schemas import FollowupOut
 from app.main import app
 from app.workflows.message import market_pulse
-from app.workflows.research import deep_research
+from app.workflows.research import followup as followup_wf
 
 client = TestClient(app)
 
@@ -34,10 +35,10 @@ def test_brief_run_invokes_workflow(monkeypatch) -> None:
 
 
 def test_research_followup_invokes_workflow(monkeypatch) -> None:
-    async def _stub(*, query, company_id=None, industry_id=None, initiated_by="schedule", resume_state_id=None):
-        return {"blocked": False, "answer": f"re: {query}", "sources": [1, 2]}
+    async def _stub(*, query, company_id=None, industry_id=None):
+        return FollowupOut(answer=f"re: {query}", sources=[1, 2])
 
-    monkeypatch.setattr(deep_research, "run", _stub)
+    monkeypatch.setattr(followup_wf, "run", _stub)
     resp = client.post("/research/followup", json={"query": "nvidia"})
     assert resp.status_code == 200
     body = resp.json()

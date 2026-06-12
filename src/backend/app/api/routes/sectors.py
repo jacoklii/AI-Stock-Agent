@@ -7,12 +7,34 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import ro_session, rw_session
-from app.api.schemas import ArticleOut, IndustryFlagUpdate, IndustryView
+from app.api.schemas import ArticleOut, IndustryFlagUpdate, IndustryListItem, IndustryView
 from app.db.models.companies import Company, Industry
 from app.db.models.news import NewsEvent
 from app.db.models.user import UserPreferences
 
 router = APIRouter(tags=["industries"])
+
+
+@router.get("/industries", response_model=list[IndustryListItem])
+async def list_industries(
+    session: AsyncSession = Depends(ro_session),
+) -> list[IndustryListItem]:
+    """All industries in the controlled vocabulary, with the user's critical flags."""
+    prefs = (
+        await session.execute(select(UserPreferences).where(UserPreferences.id == 1))
+    ).scalar_one_or_none()
+    flagged = set(prefs.critical_industries or []) if prefs else set()
+    rows = (await session.execute(select(Industry).order_by(Industry.name))).scalars()
+    return [
+        IndustryListItem(
+            industry_id=i.id,
+            key=i.key,
+            name=i.name,
+            description=i.description,
+            flagged=i.id in flagged,
+        )
+        for i in rows
+    ]
 
 
 @router.get("/industries/{industry_id}", response_model=IndustryView)

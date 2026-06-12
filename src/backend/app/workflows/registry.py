@@ -12,10 +12,11 @@ from collections.abc import Awaitable, Callable
 
 from app.workflows.analysis import company_rescore, prose_regeneration, significance_recheck
 from app.workflows.message import daily_digest, market_pulse
-from app.workflows.research import deep_research, news_ingest, sector_research
+from app.workflows.research import deep_research, followup, news_ingest, sector_research
 from app.workflows.triggers import (
     WF_DAILY_DIGEST,
     WF_DEEP_RESEARCH,
+    WF_FOLLOWUP,
     WF_MARKET_PULSE,
     WF_NEWS_INGEST,
     WF_PROSE_REGEN,
@@ -35,6 +36,7 @@ WORKFLOWS: dict[str, Callable[..., Awaitable[object]]] = {
     # The registry serves the scheduler/trigger path, where deep research is self-directed;
     # chat/API call ``deep_research.run`` directly with the user's query.
     WF_DEEP_RESEARCH: deep_research.run_autonomous,
+    WF_FOLLOWUP: followup.run,
 }
 
 

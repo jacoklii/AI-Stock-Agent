@@ -1,0 +1,22 @@
+# Production front door (compose --profile prod): TLS via Let's Encrypt + basic auth.
+# DOMAIN / BASIC_AUTH_USER / BASIC_AUTH_HASH come from the VM's .env (env_file passthrough —
+# the bcrypt hash is never interpolated by compose). Generate the hash with:
+#   docker run --rm caddy:2-alpine caddy hash-password --plaintext 'your-password'
+{$DOMAIN} {
+	encode gzip
+
+	basic_auth {
+		{$BASIC_AUTH_USER} {$BASIC_AUTH_HASH}
+	}
+
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+
+	# API direct (skips the nginx double-hop); prefix stripped like every other proxy tier.
+	handle_path /api/* {
+		reverse_proxy api:8000
+	}
+
+	handle {
+		reverse_proxy web:80
+	}
+}

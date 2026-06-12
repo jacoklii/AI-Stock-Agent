@@ -35,11 +35,11 @@ Always-on research partner for stock and market intelligence. The agent
 
 ## Commands
 
-All backend commands from `src/backend/` with the venv active. Postgres from repo root.
+All backend commands from `src/backend/` with the venv active. Compose from repo root.
 
 ```bash
-# Postgres (repo root)
-docker compose up -d
+# Full local stack: db + api + web UI on http://localhost:3000 (repo root)
+docker compose up -d --build
 docker compose down
 
 # Setup (src/backend/, one-time)
@@ -54,61 +54,73 @@ alembic check
 # Run
 uvicorn app.main:app --reload   # FastAPI on :8000
 
-# Tests (Postgres must be up)
+# Tests (hermetic — no Postgres needed)
 pytest
-pytest tests/db/test_smoke.py
-pytest tests/tools tests/workflows
+pytest tests/api tests/workflows
+
+# Frontend (src/frontend/)
+npm run dev       # Vite on :5173, proxies /api → :8000
+npm run build     # type-check + production bundle
+npm run test      # vitest
+npm run gen:api   # regenerate src/api/schema.d.ts after route/schema changes (commit it)
+
+# Production (GCE VM — see DEPLOY.md)
+docker compose --profile prod up -d --build   # adds Caddy: TLS + basic auth
 ```
 
 Config from repo-root `.env` (copy `.env.example`). `alembic.ini` at `src/backend/`.
+The brief on a cloud host goes via email + in-app (iMessage needs a macOS host).
 
 ## File structure
 
 ```
 ai-stock-agent/
 ├── ARCHITECTURE.md
-├── docker-compose.yml
+├── DEPLOY.md               # GCP runbook (GCE VM + compose --profile prod)
+├── docker-compose.yml      # db + migrate + api + web (+ caddy under --profile prod)
+├── infra/Caddyfile         # prod front door: TLS + basic auth
 ├── .env                    # secrets, never committed
 ├── .env.example
 └── src/
-    ├── .env.example
     ├── backend/
     │   ├── alembic.ini
     │   ├── pyproject.toml
-    │   ├── scripts/                 # one-off ops scripts (e.g. embedding backfills)
-    │   ├── tests/
+    │   ├── Dockerfile  .dockerignore
+    │   ├── scripts/                 # one-off ops scripts + export_openapi.py
+    │   ├── tests/                   # hermetic: api/, workflows/, agents/
+    │   ├── data/                    # actual state — gitignored
+    │   │   └── postgres/            # local DB volume (docker-compose mounts here)
     │   └── app/
     │       ├── main.py
-    │       ├── config.py           # PULSE_CORE, DEFAULT_THRESHOLDS, model names
+    │       ├── config.py           # BRIEF_CORE, DEFAULT_THRESHOLDS, model names
     │       ├── utils.py            # Helper functions, no classes
     │       ├── db/
     │       │   ├── base.py         # PydanticJSONB, Base
     │       │   ├── enums.py        # closed PG enum sets
     │       │   ├── payloads.py     # Pydantic models for JSONB columns
     │       │   ├── session.py      # readonly_session(), SessionLocal
-    │       │   ├── models/         # companies, market_data, news, analysis, delivery, user, jobs
+    │       │   ├── models/         # companies, market_data, news, analysis, delivery, chat, user, tasks
     │       │   └── migrations/
     │       ├── providers/          # market, news, embeddings, llm, notifier
-    │       ├── tools/              # registry, tool_schema, research, analysis, delivery, invoke
-    │       ├── agents/researcher/  # agent.py, schemas.py, prompts/*.md
+    │       ├── tools/              # registry, tool_schema, research, analysis, delivery, state, invoke
+    │       ├── agents/             # budget.py + researcher/ (agent, schemas, prompt_*.md)
     │       ├── analysis/           # fundamental_score.py, sentiment_analysis.py
     │       ├── workflows/          # shared: runtime, concurrency, triggers, registry, digest_types
-    │       │   ├── research/       # news_ingest, deep_research, sector_research
+    │       │   ├── research/       # news_ingest, deep_research, followup, sector_research
     │       │   ├── analysis/       # company_rescore, prose_regeneration, significance_recheck
     │       │   └── message/        # daily_digest, market_pulse
     │       ├── scheduler/          # schedule.py, runner.py (APScheduler)
     │       ├── mcp_server/         # server.py
-    │       └── api/                # deps, schemas, routes/
-    ├── frontend/
-    │   ├── api/                                   # generated client from FastAPI OpenAPI
-    │   ├── components/
-    │   ├── lib/                                   # formatters, hooks, utilities
-    │   ├── public/
-    │   └── views/
-    └── data/                                      # actual state — gitignored
-        ├── postgres/                              # local DB volume (docker-compose mounts here)
-        └── snapshots/                             # ad-hoc pg_dump exports
-
+    │       └── api/                # deps, schemas, routes/ (home, chat, research, agent, …)
+    └── frontend/
+        ├── Dockerfile  nginx.conf  vite.config.ts  package.json
+        ├── index.html  public/
+        └── src/
+            ├── api/                # schema.d.ts (generated, committed), client, queries
+            ├── components/         # NavShell, ArticleList, BudgetGauge, FreshnessStamp, …
+            ├── lib/                # format, freshness (+ tests)
+            └── views/              # Home, Chat, Research(+Detail), Industries(+Detail),
+                                    # CompanyDetail, Brief, Inbox, Settings
 ```
 
 ## Safety & security

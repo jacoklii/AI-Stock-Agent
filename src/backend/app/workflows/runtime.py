@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import TypeVar
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.enums import TaskStatus
@@ -96,6 +97,28 @@ async def run_task(
 
 # Back-compat alias so existing callers using ``run_job`` continue to work.
 run_job = run_task
+
+
+async def fail_orphaned_tasks(
+    session_factory: async_sessionmaker[AsyncSession] = SessionLocal,
+) -> int:
+    """Boot-time sweep: mark tasks still ``running`` as failed ("orphaned by restart").
+
+    Safe exactly at startup — nothing is actually running before the process starts work, so a
+    ``running`` row is a process that died mid-task. Keeps the activity feed truthful; the open
+    ``research_state`` row (if any) survives and is resumed by the next autonomous wakeup."""
+    async with session_factory() as session:
+        rows = (
+            (await session.execute(select(Task).where(Task.status == TaskStatus.running)))
+            .scalars()
+            .all()
+        )
+        for task in rows:
+            task.status = TaskStatus.failed
+            task.error_message = "orphaned by restart"
+            task.completed_at = _utcnow()
+        await session.commit()
+        return len(rows)
 
 
 async def with_retry(

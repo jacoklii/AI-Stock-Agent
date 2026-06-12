@@ -50,17 +50,25 @@ class RawEvent:
 
 
 async def _fetch_events() -> list[RawEvent]:
-    """Pull raw events for the coverage universe from Finnhub, resolving company_id by ticker."""
+    """Pull the general/macro feed plus per-symbol news for the watchlist.
+
+    Breadth watches the whole market: the general feed always flows (even with an empty
+    watchlist) and significance classification separates signal from noise downstream. The
+    per-symbol depth fetch stays watchlist-only — the deliberate cost boundary. ``company_id``
+    resolves against every tracked company (any active tier), so a macro item naming a
+    discovered mega-cap still lands on its page."""
     async with readonly_session() as session:
-        companies = await screen_stocks(
-            session, filters=ScreenFilters(coverage_tier=CoverageTier.watchlist, limit=1000)
-        )
-    by_ticker = {c.ticker: c for c in companies}
-    if not by_ticker:
-        return []
+        tracked = await screen_stocks(session, filters=ScreenFilters(limit=1000))
+    tracked = [c for c in tracked if c.coverage_tier is not CoverageTier.archived]
+    by_ticker = {c.ticker: c for c in tracked}
+    watchlist = [c.ticker for c in tracked if c.coverage_tier is CoverageTier.watchlist]
 
     since = datetime.now(timezone.utc) - _LOOKBACK
-    items = await get_news_provider().fetch_events(list(by_ticker), since=since)
+    provider = get_news_provider()
+    items = await provider.fetch_general_news(since=since)
+    if watchlist:
+        items += await provider.fetch_events(watchlist, since=since)
+
     events: list[RawEvent] = []
     for item in items:
         primary = item.tickers[0] if item.tickers else None

@@ -7,13 +7,44 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import ro_session, rw_session
-from app.api.schemas import ArticleOut, CompanyDetail, ProseOut, ScoreOut, WatchlistUpdate
+from app.api.schemas import (
+    ArticleOut,
+    CompanyDetail,
+    CompanyListItem,
+    ProseOut,
+    ScoreOut,
+    WatchlistUpdate,
+)
 from app.db.enums import CoverageTier
 from app.db.models.companies import Company
 from app.tools.analysis import get_latest_prose, get_latest_scores
-from app.tools.research import get_company, get_news_events
+from app.tools.research import get_company, get_news_events, screen_stocks
+from app.tools.tool_schema import ScreenFilters
 
 router = APIRouter(tags=["companies"])
+
+
+@router.get("/companies", response_model=list[CompanyListItem])
+async def list_companies(
+    tier: CoverageTier | None = None,
+    limit: int = 100,
+    session: AsyncSession = Depends(ro_session),
+) -> list[CompanyListItem]:
+    """Companies, optionally filtered by coverage tier (e.g. the watchlist)."""
+    candidates = await screen_stocks(
+        session, filters=ScreenFilters(coverage_tier=tier, limit=min(limit, 500))
+    )
+    return [
+        CompanyListItem(
+            company_id=c.company_id,
+            ticker=c.ticker,
+            name=c.name,
+            sector=c.sector,
+            industry_id=c.industry_id,
+            coverage_tier=c.coverage_tier,
+        )
+        for c in candidates
+    ]
 
 
 @router.get("/companies/{company_id}", response_model=CompanyDetail)

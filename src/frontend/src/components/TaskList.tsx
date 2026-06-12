@@ -1,0 +1,32 @@
+import { StatusPill } from "./StatusPill";
+import { fmtTokens, timeAgo } from "../lib/format";
+import type { TaskOut } from "../api/types";
+
+/** The tasks ledger — what the agent is doing / just did, with its cost. */
+export function TaskList({ tasks, empty = "Nothing here." }: { tasks: TaskOut[]; empty?: string }) {
+  if (tasks.length === 0) {
+    return <p className="text-sm text-neutral-400">{empty}</p>;
+  }
+  return (
+    <ul className="divide-y divide-neutral-100">
+      {tasks.map((t) => (
+        <li key={t.id} className="flex items-center justify-between gap-3 py-2">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="truncate font-mono text-sm text-neutral-800">{t.type}</span>
+              <StatusPill status={t.status} />
+            </div>
+            <div className="mt-0.5 text-xs text-neutral-400">
+              {timeAgo(t.started_at)}
+              {t.message ? ` · ${t.message}` : ""}
+              {t.error_message ? ` · ${t.error_message}` : ""}
+            </div>
+          </div>
+          <span className="shrink-0 text-xs tabular-nums text-neutral-500">
+            {t.tokens_used != null ? `${fmtTokens(t.tokens_used)} tok` : ""}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}

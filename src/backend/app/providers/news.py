@@ -60,6 +60,31 @@ class NewsProvider:
                     items.append(_map_item(row, symbol))
         return items
 
+    async def fetch_general_news(self, *, since: datetime | None = None) -> list[RawNewsItem]:
+        """The general/macro market feed (Finnhub ``/news?category=general``).
+
+        The endpoint returns only the latest headlines (no date range), so ``since`` filters
+        client-side — the hourly run ingests just its new window. Items keep whatever tickers
+        the provider relates; many are pure macro with none."""
+        import httpx
+
+        async with httpx.AsyncClient(base_url=_BASE_URL, timeout=20.0) as client:
+            resp = await client.get(
+                "/news", params={"category": "general", "token": self._api_key}
+            )
+            resp.raise_for_status()
+            rows = resp.json()
+
+        items: list[RawNewsItem] = []
+        for row in rows:
+            item = _map_general(row)
+            if not item.url or not item.headline:
+                continue
+            if since is not None and item.published_at < since:
+                continue
+            items.append(item)
+        return items
+
 
 def _map_item(row: dict, symbol: str) -> RawNewsItem:
     ts = row.get("datetime")
@@ -74,6 +99,22 @@ def _map_item(row: dict, symbol: str) -> RawNewsItem:
         published_at=published,
         source=row.get("source"),
         tickers=[symbol] + [t for t in row.get("related", "").split(",") if t and t != symbol],
+    )
+
+
+def _map_general(row: dict) -> RawNewsItem:
+    ts = row.get("datetime")
+    published = (
+        datetime.fromtimestamp(ts, tz=timezone.utc)
+        if ts
+        else datetime.now(timezone.utc)
+    )
+    return RawNewsItem(
+        url=row.get("url", ""),
+        headline=row.get("headline", ""),
+        published_at=published,
+        source=row.get("source"),
+        tickers=[t for t in row.get("related", "").split(",") if t],
     )
 
 

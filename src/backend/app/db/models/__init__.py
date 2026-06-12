@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from app.db.models.analysis import Analysis, Fundamental, Sentimental
 from app.db.models.cache import Cache
+from app.db.models.chat import ChatMessage
 from app.db.models.companies import Company, Industry
 from app.db.models.delivery import Notification
 from app.db.models.market_data import CatalystCalendar, Financial, Price
@@ -33,6 +34,8 @@ __all__ = [
     "Analysis",
     # delivery
     "Notification",
+    # chat
+    "ChatMessage",
     # user
     "UserPreferences",
     # research state + tasks

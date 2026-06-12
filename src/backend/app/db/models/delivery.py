@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, String, UniqueConstraint, func
+from sqlalchemy import BigInteger, DateTime, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampMixin, intpk
@@ -39,6 +39,10 @@ class Notification(Base, TimestampMixin):
     channel: Mapped[Channel] = mapped_column(channel_enum, index=True)
     template: Mapped[str | None] = mapped_column(String(64), nullable=True)
     content_hash: Mapped[str] = mapped_column(String(64))
+    # Displayable snapshot of what went out — what the inbox and /brief/latest render.
+    # AI-written orientation text only; never raw article bodies.
+    title: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    body: Mapped[str | None] = mapped_column(Text, nullable=True)
     ref_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
     ref_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     # In-app inbox state — null = unread/active.

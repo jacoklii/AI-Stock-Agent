@@ -18,7 +18,7 @@ from app.agents.researcher import TASKS, get_researcher
 from app.db.enums import AnalysisType, Channel
 from app.db.models.analysis import Analysis
 from app.db.models.user import UserPreferences
-from app.db.payloads import AnalysisContent, AnalysisSupportingInputs
+from app.db.payloads import AnalysisContent, AnalysisSupportingInputs, UserChannels
 from app.db.session import SessionLocal, readonly_session
 from app.providers.embeddings import get_embeddings_provider
 from app.tools.delivery import content_hash_for, deliver
@@ -38,12 +38,19 @@ async def _refresh() -> list[DigestSection]:
     return await sector_research.run()
 
 
-async def _email_address() -> str | None:
+async def _user_channels() -> UserChannels:
     async with readonly_session() as session:
         prefs = (
             await session.execute(select(UserPreferences).where(UserPreferences.id == 1))
         ).scalar_one_or_none()
-    return prefs.channels.email if prefs and prefs.channels else None
+    return prefs.channels if prefs and prefs.channels else UserChannels()
+
+
+_ADDRESS_FIELD = {
+    Channel.email: "email",
+    Channel.imessage: "imessage",
+    Channel.whatsapp: "whatsapp",
+}
 
 
 async def run() -> None:
@@ -79,27 +86,36 @@ async def run() -> None:
             analysis_id = row.id
         task.count("digest_rows")
 
-        # 2. Deliver: email (if an address is set) + the in-app inbox mirror.
-        address = await _email_address()
+        # 2. Deliver, routed per the user's digest channels (default email + in-app mirror).
+        # One failing channel never aborts the rest; failures are counted on the task row.
+        channels = await _user_channels()
+        title = "Daily research digest"
         body = top_snapshot + "\n\n" + "\n\n".join(f"## {s.section_title}\n{s.snapshot}" for s in sections)
         async with SessionLocal() as session:
-            if address:
-                await deliver(
-                    session,
-                    channel=Channel.email,
-                    content_hash=content_hash_for("digest", str(analysis_id), "email"),
-                    template="digest",
-                    ref_type="digest",
-                    ref_id=analysis_id,
-                    to_addr=address,
-                    subject="Daily research digest",
-                    body=body,
+            for name in channels.digest_channels:
+                try:
+                    channel = Channel(name)
+                except ValueError:
+                    task.count("unknown_channel")
+                    continue
+                to_addr = (
+                    getattr(channels, _ADDRESS_FIELD[channel]) if channel in _ADDRESS_FIELD else None
                 )
-            await deliver(
-                session,
-                channel=Channel.in_app,
-                content_hash=content_hash_for("digest", str(analysis_id), "in_app"),
-                template="digest",
-                ref_type="digest",
-                ref_id=analysis_id,
-            )
+                if channel is not Channel.in_app and not to_addr:
+                    continue  # external channel with no address configured
+                try:
+                    await deliver(
+                        session,
+                        channel=channel,
+                        content_hash=content_hash_for("digest", str(analysis_id), channel.value),
+                        template="digest",
+                        ref_type="digest",
+                        ref_id=analysis_id,
+                        to_addr=to_addr,
+                        subject=title,
+                        body=body if channel in (Channel.email, Channel.in_app) else None,
+                        text=body if channel in (Channel.imessage, Channel.whatsapp) else None,
+                    )
+                    task.count(f"sent_{channel.value}")
+                except Exception:
+                    task.count("send_failed")

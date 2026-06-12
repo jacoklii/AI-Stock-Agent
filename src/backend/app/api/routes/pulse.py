@@ -1,17 +1,20 @@
 """Market brief view + on-demand trigger.
 
-The brief is transient (ARCHITECTURE.md): it is regenerated live from quotes and never persisted,
-so there is no ``/brief/latest``. ``GET /brief/state`` returns live quotes for the brief set; the
-on-demand ``POST /brief/run`` trigger is deferred until the brief workflow lands.
+The brief itself is transient (ARCHITECTURE.md): regenerated live from quotes, never persisted
+as its own table. ``GET /brief/state`` returns live quotes; ``GET /brief/latest`` reads back the
+last delivered snapshot from the notification ledger (the in-app mirror row carries the body).
 """
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import ro_session
-from app.api.schemas import BriefInstrumentOut, BriefStateOut
+from app.api.schemas import BriefInstrumentOut, BriefLatestOut, BriefStateOut
+from app.db.enums import Channel
+from app.db.models.delivery import Notification
 from app.providers.market import get_market_provider
 from app.tools.research import get_brief_state
 from app.workflows.message import market_pulse
@@ -28,8 +31,25 @@ async def brief_state(session: AsyncSession = Depends(ro_session)) -> BriefState
     )
 
 
+@router.get("/brief/latest", response_model=BriefLatestOut)
+async def brief_latest(session: AsyncSession = Depends(ro_session)) -> BriefLatestOut:
+    """The most recently delivered brief snapshot (from the in-app ledger mirror)."""
+    row = (
+        await session.execute(
+            select(Notification)
+            .where(Notification.channel == Channel.in_app)
+            .where(Notification.ref_type == "brief")
+            .order_by(Notification.sent_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="no brief delivered yet")
+    return BriefLatestOut(title=row.title, body=row.body, sent_at=row.sent_at)
+
+
 @router.post("/brief/run")
 async def run_brief() -> dict:
-    """On-demand market brief: generate the snapshot and deliver it now (iMessage + inbox)."""
+    """On-demand market brief: generate the snapshot and deliver it now (per brief channels)."""
     await market_pulse.run(slot="on_demand")
     return {"status": "ok"}

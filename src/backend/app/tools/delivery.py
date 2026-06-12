@@ -96,6 +96,8 @@ async def deliver(
             return SendReceiptResult(channel=channel, sent=False, detail="no address")
         await notifier.send_message(to_addr=to_addr, text=text or "", channel=channel)
 
+    # The ledger row carries a displayable snapshot (title/body) so the inbox and
+    # /brief/latest can render what went out without re-generating it.
     session.add(
         Notification(
             channel=channel,
@@ -103,6 +105,8 @@ async def deliver(
             content_hash=content_hash,
             ref_type=ref_type,
             ref_id=ref_id,
+            title=subject,
+            body=body or text,
         )
     )
     await session.commit()

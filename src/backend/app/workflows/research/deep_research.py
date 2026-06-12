@@ -230,6 +230,38 @@ async def run(
         return {"blocked": False, "paused": False, "answer": out.answer, "sources": out.sources, "state_id": state_id}
 
 
+async def close_user_session(state_id: int, *, promote: bool = False) -> dict:
+    """User-initiated close from the interface: optionally promote flushed findings, then close.
+
+    Open sessions get promote-then-close (mirroring ``_expire_stale_sessions``). An already-closed
+    session with ``promote=True`` promotes only — this is how "ask about promotion on close" is
+    answered asynchronously from the Research view. Promotion is the workflow's job (per
+    ``tools/state.py``), so the API route calls this instead of reaching into the tools."""
+    async with readonly_session() as session:
+        state = await get_research_state(session, state_id=state_id)
+    if state is None:
+        return {"found": False, "promoted": False, "closed": False}
+
+    promoted = False
+    if promote and (state.findings or state.open_questions):
+        await _promote(
+            state_id,
+            answer=None,
+            findings=state.findings,
+            open_questions=state.open_questions,
+            sources=state.source_ids,
+            model_name=TASKS[TASK_DEEP_RESEARCH].model,
+        )
+        promoted = True
+
+    closed = False
+    if state.status == StateStatus.open.value:
+        async with SessionLocal() as session:
+            await close_research(session, get_embeddings_provider(), state_id=state_id)
+        closed = True
+    return {"found": True, "promoted": promoted, "closed": closed}
+
+
 _AUTONOMOUS_QUERY = (
     "Self-directed session: pick the single most material question from `candidates` and research it."
 )

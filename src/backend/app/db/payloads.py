@@ -79,6 +79,16 @@ class AnalysisSupportingInputs(BaseModel):
     source_refs: list[str] = Field(default_factory=list)
 
 
+# --- Chat -----------------------------------------------------------------------
+
+
+class ChatSources(BaseModel):
+    """Provenance for an assistant chat message — the events and URLs the answer drew on."""
+
+    news_event_ids: list[int] = Field(default_factory=list)
+    urls: list[str] = Field(default_factory=list)
+
+
 # --- Research state -----------------------------------------------------------
 
 

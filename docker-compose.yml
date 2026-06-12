@@ -14,7 +14,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-stockagent}
       POSTGRES_DB: ${POSTGRES_DB:-stockagent}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      # Loopback-only: on a VM the public ports are Caddy's; nothing bypasses its auth.
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     # Persisted data lives under the repo's data folder (gitignored), per the repo structure.
     volumes:
       - ./src/backend/data/postgres:/var/lib/postgresql/data
@@ -44,10 +45,47 @@ services:
       migrate:
         condition: service_completed_successfully
     ports:
-      - "${API_PORT:-8000}:8000"
+      - "127.0.0.1:${API_PORT:-8000}:8000"
     <<: *api-env
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
       interval: 10s
       timeout: 5s
       retries: 5
+
+  # The SPA: nginx serving the built bundle, proxying /api/* to the api container.
+  # Local entry point: http://localhost:3000 (no Caddy needed off-VM).
+  web:
+    build: ./src/frontend
+    container_name: ai-stock-agent-web
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${WEB_PORT:-3000}:80"
+
+  # Production front door (VM only): TLS + basic auth. Start with:
+  #   docker compose --profile prod up -d --build
+  # DOMAIN / BASIC_AUTH_* ride in via env_file so the bcrypt hash is never interpolated.
+  caddy:
+    image: caddy:2-alpine
+    container_name: ai-stock-agent-caddy
+    profiles: ["prod"]
+    restart: unless-stopped
+    depends_on:
+      - web
+      - api
+    ports:
+      - "80:80"
+      - "443:443"
+    env_file:
+      - .env
+    volumes:
+      - ./infra/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

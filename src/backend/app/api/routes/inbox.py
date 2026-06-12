@@ -30,6 +30,8 @@ async def inbox(limit: int = 100, session: AsyncSession = Depends(ro_session)) -
             template=r.template,
             ref_type=r.ref_type,
             ref_id=r.ref_id,
+            title=r.title,
+            body=r.body,
             read_at=r.read_at,
             dismissed_at=r.dismissed_at,
         )

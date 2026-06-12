@@ -85,6 +85,10 @@ class Settings(BaseSettings):
     # opening one past the cap blocks and surfaces instead of starting a 4th.
     deep_research_max_active: int = 3
 
+    # Origins allowed to call the API cross-origin. Only the Vite dev server needs this —
+    # the built SPA is served same-origin behind nginx/Caddy.
+    cors_origins: list[str] = ["http://localhost:5173"]
+
 
 @lru_cache
 def get_settings() -> Settings:
@@ -132,3 +136,57 @@ DEFAULT_THRESHOLDS: dict[str, float] = {
     "volume_x": 2.0,
     "score_shift": 10.0,
 }
+
+
+# --- First-boot defaults (bootstrap) -------------------------------------------
+# ``app.db.bootstrap.ensure_defaults`` seeds these idempotently at API startup — default
+# *state*, not sample data: a general/popular coverage universe the breadth pipelines keep
+# fresh. Everything here is user-editable afterwards (Settings, Industries, watchlist).
+
+# Modest default cap so an unattended deployment can't spend unbounded; raise it in Settings.
+DEFAULT_WEEKLY_TOKEN_BUDGET = 2_000_000
+
+DEFAULT_INTERESTED_SECTORS: list[str] = [
+    "Information Technology",
+    "Communication Services",
+    "Financials",
+    "Energy",
+    "Health Care",
+]
+
+# Default brief mega-caps (ARCHITECTURE: 5-7 user stocks under the fixed core).
+DEFAULT_BRIEF_USER: list[str] = ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN"]
+
+# The general industries vocabulary — the popular domains macro news keeps touching.
+DEFAULT_INDUSTRIES: list[dict[str, str]] = [
+    {"key": "semiconductors", "name": "Semiconductors", "description": "Chip design, fabrication, and equipment across the supply chain."},
+    {"key": "ai-cloud-software", "name": "AI & Cloud Software", "description": "AI platforms, hyperscale cloud, and enterprise software."},
+    {"key": "consumer-tech", "name": "Consumer Technology", "description": "Consumer electronics, devices, and platform ecosystems."},
+    {"key": "ev-auto", "name": "EV & Automotive", "description": "Electric vehicles, legacy autos, and the battery chain."},
+    {"key": "energy-oil-gas", "name": "Energy (Oil & Gas)", "description": "Majors, shale, and global oil/gas supply dynamics."},
+    {"key": "banks-financials", "name": "Banks & Financials", "description": "Banks, payments, insurance, and capital markets."},
+    {"key": "pharma-biotech", "name": "Pharma & Biotech", "description": "Pharmaceuticals, biotech, and drug-approval pipelines."},
+    {"key": "defense-aerospace", "name": "Defense & Aerospace", "description": "Defense primes, aerospace, and government programs."},
+    {"key": "consumer-retail", "name": "Consumer & Retail", "description": "Retail, e-commerce, and consumer spending signals."},
+    {"key": "industrials", "name": "Industrials & Manufacturing", "description": "Machinery, logistics, construction, and reshoring."},
+    {"key": "telecom-media", "name": "Telecom & Media", "description": "Carriers, streaming, advertising, and social platforms."},
+]
+
+# Popular mega-caps as the starting research surface — ``discovered`` tier (lightweight
+# tracking only; the deliberate cost boundary keeps deep scoring on the watchlist).
+DEFAULT_COMPANIES: list[dict[str, str]] = [
+    {"ticker": "AAPL", "name": "Apple Inc.", "sector": "Information Technology", "industry": "consumer-tech", "exchange": "NASDAQ"},
+    {"ticker": "MSFT", "name": "Microsoft Corporation", "sector": "Information Technology", "industry": "ai-cloud-software", "exchange": "NASDAQ"},
+    {"ticker": "NVDA", "name": "NVIDIA Corporation", "sector": "Information Technology", "industry": "semiconductors", "exchange": "NASDAQ"},
+    {"ticker": "GOOGL", "name": "Alphabet Inc.", "sector": "Communication Services", "industry": "ai-cloud-software", "exchange": "NASDAQ"},
+    {"ticker": "AMZN", "name": "Amazon.com Inc.", "sector": "Consumer Discretionary", "industry": "consumer-retail", "exchange": "NASDAQ"},
+    {"ticker": "META", "name": "Meta Platforms Inc.", "sector": "Communication Services", "industry": "telecom-media", "exchange": "NASDAQ"},
+    {"ticker": "TSLA", "name": "Tesla Inc.", "sector": "Consumer Discretionary", "industry": "ev-auto", "exchange": "NASDAQ"},
+    {"ticker": "AVGO", "name": "Broadcom Inc.", "sector": "Information Technology", "industry": "semiconductors", "exchange": "NASDAQ"},
+    {"ticker": "TSM", "name": "Taiwan Semiconductor (ADR)", "sector": "Information Technology", "industry": "semiconductors", "exchange": "NYSE"},
+    {"ticker": "JPM", "name": "JPMorgan Chase & Co.", "sector": "Financials", "industry": "banks-financials", "exchange": "NYSE"},
+    {"ticker": "XOM", "name": "Exxon Mobil Corporation", "sector": "Energy", "industry": "energy-oil-gas", "exchange": "NYSE"},
+    {"ticker": "LLY", "name": "Eli Lilly and Company", "sector": "Health Care", "industry": "pharma-biotech", "exchange": "NYSE"},
+    {"ticker": "LMT", "name": "Lockheed Martin Corporation", "sector": "Industrials", "industry": "defense-aerospace", "exchange": "NYSE"},
+    {"ticker": "CAT", "name": "Caterpillar Inc.", "sector": "Industrials", "industry": "industrials", "exchange": "NYSE"},
+]
