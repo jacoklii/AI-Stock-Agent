@@ -22,7 +22,7 @@ _NOW = datetime(2026, 6, 11, 12, 0, tzinfo=timezone.utc)
 
 
 def _state_row(state_id: int = 7, status: StateStatus = StateStatus.open) -> ResearchState:
-    row = ResearchState(topic="nvidia supply chain", status=status)
+    row = ResearchState(topic="nvidia supply chain", status=status, initiated_by="schedule")
     row.id = state_id
     row.opened_at = _NOW
     row.last_active_at = _NOW
@@ -41,8 +41,9 @@ def test_open_session_returns_202_and_spawns(monkeypatch, client) -> None:
     _uncapped(monkeypatch)
     use_session(FakeSession([FakeResult(scalars=[])]))  # no open sessions
 
-    async def _open(session, *, topic, parent_state_id=None):
+    async def _open(session, *, topic, parent_state_id=None, initiated_by="schedule"):
         assert topic == "nvidia supply chain"
+        assert initiated_by == "user"  # a session opened from the interface is user-requested
         return SimpleNamespace(state_id=42)
 
     spawned: list = []

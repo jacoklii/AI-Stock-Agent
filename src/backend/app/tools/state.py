@@ -54,9 +54,18 @@ def _append(existing: str | None, addition: str | None) -> str | None:
     writes=True,
 )
 async def open_research(
-    session: AsyncSession, *, topic: str, parent_state_id: int | None = None
+    session: AsyncSession,
+    *,
+    topic: str,
+    parent_state_id: int | None = None,
+    initiated_by: str = "schedule",
 ) -> ResearchStateResult:
-    row = ResearchState(topic=topic, status=StateStatus.open, parent_state_id=parent_state_id)
+    row = ResearchState(
+        topic=topic,
+        status=StateStatus.open,
+        parent_state_id=parent_state_id,
+        initiated_by=initiated_by,
+    )
     session.add(row)
     await session.commit()
     return _result(row)

@@ -45,7 +45,7 @@ def _patch_seams(monkeypatch, *, out, state_findings: str | None = "flushed") ->
     async def _active():
         return 0
 
-    async def _open(session, *, topic, parent_state_id=None):
+    async def _open(session, *, topic, parent_state_id=None, initiated_by="schedule"):
         return SimpleNamespace(state_id=7)
 
     async def _recall(query):

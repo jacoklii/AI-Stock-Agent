@@ -226,6 +226,8 @@ class ResearchSessionOut(BaseModel):
     state_id: int
     topic: str
     status: Literal["open", "closed"]
+    # Who opened it: "user" (requested from the interface) or "schedule" (the agent's autonomous work).
+    initiated_by: str
     current_task: str | None
     findings: str | None
     open_questions: str | None
@@ -244,6 +246,9 @@ class TaskOut(BaseModel):
     error_message: str | None
     tokens_used: int | None
     state_id: int | None
+    # For research tasks: "user" or "schedule" (who initiated it); None for tasks with no initiator
+    # (ingest, scoring, digests — always the agent's own scheduled work).
+    initiated_by: str | None = None
     message: str | None = None
     counts: dict[str, int] = Field(default_factory=dict)
 

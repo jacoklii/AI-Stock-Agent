@@ -45,6 +45,11 @@ class ResearchState(Base, TimestampMixin):
         server_default=StateStatus.open.value,
         index=True,
     )
+    # Who opened this session: "user" (requested from the interface) or "schedule" (the agent's own
+    # autonomous/scheduled work). Lets the UI distinguish requested vs autonomous research.
+    initiated_by: Mapped[str] = mapped_column(
+        String(16), default="schedule", server_default="schedule"
+    )
     # What the agent is doing right now (null when idle / between tasks).
     current_task: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Previous and finished tasks within this session (in-session task list).

@@ -9,6 +9,7 @@ import {
 } from "../api/queries";
 import { ArticleList } from "../components/ArticleList";
 import { FreshnessStamp } from "../components/FreshnessStamp";
+import { OriginBadge } from "../components/OriginBadge";
 import { Prose } from "../components/Prose";
 import { SnapshotCard } from "../components/SnapshotCard";
 import { SourceChips } from "../components/SourceChips";
@@ -37,6 +38,7 @@ export function ResearchDetail() {
         <div>
           <h1 className="text-lg font-bold tracking-tight">{s.topic}</h1>
           <div className="mt-1 flex items-center gap-2">
+            <OriginBadge initiatedBy={s.initiated_by} />
             <StatusPill status={s.status} />
             <FreshnessStamp
               iso={s.status === "closed" ? s.closed_at : s.last_active_at}

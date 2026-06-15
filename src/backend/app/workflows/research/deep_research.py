@@ -140,7 +140,9 @@ async def run(
         if await _active_count() >= settings.deep_research_max_active:
             return {"blocked": True, "reason": "max active research sessions reached", "answer": None, "sources": [], "state_id": None}
         async with SessionLocal() as session:
-            opened = await open_research(session, topic=query, parent_state_id=parent_state_id)
+            opened = await open_research(
+                session, topic=query, parent_state_id=parent_state_id, initiated_by=initiated_by
+            )
         state_id, topic = opened.state_id, query
         memory = {"prior_findings": None, "open_questions": None}
 

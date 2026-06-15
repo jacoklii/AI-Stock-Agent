@@ -64,6 +64,7 @@ def _session_out(row: ResearchState) -> ResearchSessionOut:
         state_id=row.id,
         topic=row.topic,
         status=row.status.value,
+        initiated_by=row.initiated_by,
         current_task=row.current_task,
         findings=row.findings,
         open_questions=row.open_questions,
@@ -84,6 +85,8 @@ def _task_out(row: Task) -> TaskOut:
         error_message=row.error_message,
         tokens_used=row.tokens_used,
         state_id=row.state_id,
+        # initiated_by rides in the task's params (extra-allowed) for research tasks only.
+        initiated_by=getattr(row.params, "initiated_by", None) if row.params else None,
         message=row.result_summary.message if row.result_summary else None,
         counts=dict(row.result_summary.counts) if row.result_summary else {},
     )
@@ -252,7 +255,7 @@ async def open_session(
     if len(open_rows) >= get_settings().deep_research_max_active:
         raise HTTPException(status_code=409, detail="max active research sessions reached")
 
-    opened = await open_research(session, topic=body.topic)
+    opened = await open_research(session, topic=body.topic, initiated_by="user")
     _spawn(_run_user_session(opened.state_id, body))
     return ResearchOpenResponse(state_id=opened.state_id)
 

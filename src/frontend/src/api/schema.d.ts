@@ -1003,6 +1003,8 @@ export interface components {
              * @enum {string}
              */
             status: "open" | "closed";
+            /** Initiated By */
+            initiated_by: string;
             /** Current Task */
             current_task: string | null;
             /** Findings */
@@ -1041,6 +1043,8 @@ export interface components {
              * @enum {string}
              */
             status: "open" | "closed";
+            /** Initiated By */
+            initiated_by: string;
             /** Current Task */
             current_task: string | null;
             /** Findings */
@@ -1099,6 +1103,8 @@ export interface components {
             tokens_used: number | null;
             /** State Id */
             state_id: number | null;
+            /** Initiated By */
+            initiated_by?: string | null;
             /** Message */
             message?: string | null;
             /** Counts */
