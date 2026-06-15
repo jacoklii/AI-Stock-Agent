@@ -144,9 +144,22 @@ TASKS: dict[str, TaskSpec] = {
 }
 
 
+# The shared system prompt — role, autonomy, learning, constraints, grounding — prepended to every
+# task's card. One identity for the whole agent; the per-task file only says what *this* call's job
+# is. It is byte-identical across tasks and rendered first, so the prompt-cache prefix is shared
+# wherever the tool list also matches.
+SYSTEM_FILE = "prompt_system.md"
+
+
 @lru_cache(maxsize=None)
 def _load_prompt(filename: str) -> str:
     return (_PROMPT_DIR / filename).read_text(encoding="utf-8")
+
+
+@lru_cache(maxsize=None)
+def _system_prompt(prompt_file: str) -> str:
+    """The full system string for a task: shared + the task's card."""
+    return f"{_load_prompt(SYSTEM_FILE)}\n\n---\n\n{_load_prompt(prompt_file)}"
 
 
 def _jsonable(value: Any) -> Any:
@@ -202,7 +215,7 @@ class Researcher:
             # appending here (not mutating per attempt) keeps the prompt-cache prefix stable.
             tools = tools + _SERVER_WEB_TOOLS
 
-        system = _load_prompt(spec.prompt_file)
+        system = _system_prompt(spec.prompt_file)
         messages: list[dict[str, Any]] = [
             {"role": "user", "content": json.dumps(_jsonable(inputs), default=str)}
         ]

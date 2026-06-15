@@ -17,6 +17,7 @@ from app.db.models.news import NewsEvent
 from app.db.models.state import ResearchState
 from app.db.models.tasks import Task
 from app.db.models.user import UserPreferences
+from app.db.models.user_interest import UserInterest
 
 __all__ = [
     # companies + industries
@@ -38,6 +39,7 @@ __all__ = [
     "ChatMessage",
     # user
     "UserPreferences",
+    "UserInterest",
     # research state + tasks
     "ResearchState",
     "Task",

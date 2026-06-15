@@ -15,12 +15,14 @@ from app.workflows.research import news_ingest
 from app.workflows.runtime import TaskHandle
 
 
-def _event(url: str, company_id: int | None = None) -> news_ingest.RawEvent:
+def _event(
+    url: str, company_id: int | None = None, headline: str | None = None
+) -> news_ingest.RawEvent:
     return news_ingest.RawEvent(
         url=url,
         source="src",
         published_at=datetime.now(timezone.utc),
-        headline="h",
+        headline=headline if headline is not None else f"headline {url}",
         tickers=["AAA"],
         company_id=company_id,
     )
@@ -64,6 +66,15 @@ def _patch_seams(monkeypatch, *, fetched, known, significance) -> dict:
     async def _existing(urls):
         return known
 
+    async def _existing_headlines():
+        return set()
+
+    async def _recent_embeddings():
+        return []
+
+    async def _industry_embeddings():
+        return []
+
     async def _summarize(event):
         recorded["summarized"].append(event.url)
         return SimpleNamespace(summary="s")
@@ -79,6 +90,9 @@ def _patch_seams(monkeypatch, *, fetched, known, significance) -> dict:
 
     monkeypatch.setattr(news_ingest, "_fetch_events", _fetch)
     monkeypatch.setattr(news_ingest, "_existing_urls", _existing)
+    monkeypatch.setattr(news_ingest, "_existing_headlines", _existing_headlines)
+    monkeypatch.setattr(news_ingest, "_recent_embeddings", _recent_embeddings)
+    monkeypatch.setattr(news_ingest, "_industry_embeddings", _industry_embeddings)
     monkeypatch.setattr(news_ingest, "_summarize", _summarize)
     monkeypatch.setattr(news_ingest, "_classify_significance", _classify)
     monkeypatch.setattr(news_ingest, "_enqueue_rescore", _rescore)

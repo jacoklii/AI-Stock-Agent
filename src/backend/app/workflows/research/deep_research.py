@@ -29,10 +29,8 @@ from app.agents.researcher import TASKS, get_researcher
 from app.config import DEEP_RESEARCH_MAX_SESSION_AGE_DAYS, get_settings
 from app.db.enums import AnalysisType, StateStatus
 from app.db.models.analysis import Analysis
-from app.db.models.companies import Industry
 from app.db.models.news import NewsEvent
 from app.db.models.state import ResearchState
-from app.db.models.user import UserPreferences
 from app.db.payloads import AnalysisContent, AnalysisSupportingInputs
 from app.db.session import SessionLocal, readonly_session
 from app.providers.embeddings import get_embeddings_provider
@@ -53,30 +51,6 @@ async def _active_count() -> int:
                 .where(ResearchState.status == StateStatus.open)
             )
         ).scalar_one()
-
-
-async def _user_context() -> dict:
-    """The user's declared interests — so the agent judges materiality like a partner."""
-    async with readonly_session() as session:
-        prefs = (
-            await session.execute(select(UserPreferences).where(UserPreferences.id == 1))
-        ).scalar_one_or_none()
-        if prefs is None:
-            return {}
-        industries: list[str] = []
-        if prefs.critical_industries:
-            industries = list(
-                (
-                    await session.execute(
-                        select(Industry.name).where(Industry.id.in_(prefs.critical_industries))
-                    )
-                ).scalars()
-            )
-        return {
-            "interested_sectors": list(prefs.interested_sectors),
-            "critical_industries": industries,
-            "brief_stocks": list(prefs.brief_user),
-        }
 
 
 async def _recall(query: str) -> dict:
@@ -186,9 +160,8 @@ async def run(
                 "state_id": state_id,
                 "company_id": company_id,
                 "industry_id": industry_id,
-                # Surroundings: the user's goals and the budget posture, so the agent can
-                # judge materiality and self-pace.
-                "user_context": await _user_context(),
+                # Budget posture so the agent can self-pace. The user's interests are no longer
+                # dumped here — the agent pulls the relevant slice on demand via recall_preferences.
                 "budget_remaining": remaining,
                 **memory,
                 **recalled,

@@ -1,7 +1,12 @@
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { useCompanyDetail, useSendChat, useWatchlistAction } from "../api/queries";
+import {
+  useCompanyDetail,
+  useCompanyRelated,
+  useSendChat,
+  useWatchlistAction,
+} from "../api/queries";
 import { ArticleList } from "../components/ArticleList";
 import { FreshnessStamp } from "../components/FreshnessStamp";
 import { Prose } from "../components/Prose";
@@ -12,6 +17,7 @@ export function CompanyDetail() {
   const { companyId } = useParams();
   const id = Number(companyId);
   const detail = useCompanyDetail(id);
+  const related = useCompanyRelated(id);
   const watchlist = useWatchlistAction(id);
   const sendChat = useSendChat();
   const navigate = useNavigate();
@@ -114,6 +120,15 @@ export function CompanyDetail() {
       <SnapshotCard title="Articles">
         <ArticleList articles={c.articles} />
       </SnapshotCard>
+
+      {related.data && related.data.length > 0 && (
+        <SnapshotCard title="Related across the market">
+          <p className="mb-2 text-xs text-neutral-400">
+            Events elsewhere on the same theme — surfaced by similarity, not by ticker.
+          </p>
+          <ArticleList articles={related.data} />
+        </SnapshotCard>
+      )}
     </div>
   );
 }

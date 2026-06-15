@@ -21,6 +21,7 @@ from app.db.models.market_data import Financial, Price
 from app.db.models.news import NewsEvent
 from app.db.models.state import ResearchState
 from app.db.models.user import UserPreferences
+from app.db.models.user_interest import UserInterest
 from app.db.payloads import BriefInstrument
 from app.providers.embeddings import EmbeddingsProvider
 from app.providers.market import MarketDataProvider
@@ -44,6 +45,7 @@ from app.tools.tool_schema import (
     ScreenFilters,
     SimilarEvent,
     SimilarHit,
+    UserInterestHit,
 )
 
 
@@ -157,7 +159,9 @@ async def get_price_history(
 
 @tool(
     name="get_news_events",
-    description="News events for a company, filtered by minimum significance score.",
+    description="News events filtered by company and/or industry and minimum significance. Pass "
+    "industry_id to pull an industry's events — company-tagged plus macro items routed to it — in "
+    "one call.",
     tasks={
         TASK_ARTICLE_SUMMARY,
         TASK_SIGNIFICANCE,
@@ -173,13 +177,18 @@ async def get_news_events(
     session: AsyncSession,
     *,
     company_id: int | None = None,
+    industry_id: int | None = None,
     min_significance: float | None = None,
     limit: int = 50,
 ) -> list[NewsEventResult]:
-    """Filter by company. ``min_significance`` keeps events at or above the given score (0–1)."""
+    """Filter by company and/or industry. ``industry_id`` matches events routed to that industry
+    (company-tagged and orphan macro alike). ``min_significance`` keeps events at or above the given
+    score (0–1)."""
     stmt = select(NewsEvent)
     if company_id is not None:
         stmt = stmt.where(NewsEvent.company_id == company_id)
+    if industry_id is not None:
+        stmt = stmt.where(NewsEvent.industry_id == industry_id)
     if min_significance is not None:
         stmt = stmt.where(NewsEvent.significance >= min_significance)
     stmt = stmt.order_by(NewsEvent.published_at.desc()).limit(limit)
@@ -317,6 +326,36 @@ async def search_similar_events(
     ]
 
 
+async def search_similar_by_vector(
+    session: AsyncSession,
+    model_cls,
+    *,
+    vector: list[float],
+    model_name: str,
+    k: int = 10,
+    exclude_id: int | None = None,
+):
+    """Rank one embedded surface by cosine distance to an **existing** vector — no embed, no LLM.
+
+    The shared core of the semantic searches and the read-only "related" API surfaces: when the
+    query is already a stored embedding (a row's own vector), pass it straight in. Returns
+    ``(orm_row, similarity)`` pairs ordered closest-first; only rows embedded with ``model_name``
+    are comparable. ``exclude_id`` drops a row by id (e.g. the query row itself). Read-only —
+    the caller projects the rows into its own DTO."""
+    distance = model_cls.embedding.cosine_distance(vector)
+    stmt = (
+        select(model_cls, distance.label("distance"))
+        .where(model_cls.embedding.is_not(None))
+        .where(model_cls.embedding_model == model_name)
+        .order_by(distance.asc())
+        .limit(k)
+    )
+    if exclude_id is not None:
+        stmt = stmt.where(model_cls.id != exclude_id)
+    rows = (await session.execute(stmt)).all()
+    return [(row, 1.0 - float(dist)) for row, dist in rows]
+
+
 # Per-scope mapping for the generalized semantic search: model + how to project a hit.
 _SIMILAR_SCOPES = {
     "news": (NewsEvent, lambda r: (r.headline, r.summary)),
@@ -346,17 +385,11 @@ async def search_similar(
         raise ValueError(f"scope must be one of {list(_SIMILAR_SCOPES)}")
     model, project = _SIMILAR_SCOPES[scope]
     embedded = await embeddings_provider.embed_query(query_text)
-    distance = model.embedding.cosine_distance(embedded.vector)
-    stmt = (
-        select(model, distance.label("distance"))
-        .where(model.embedding.is_not(None))
-        .where(model.embedding_model == embedded.model)
-        .order_by(distance.asc())
-        .limit(k)
+    hits = await search_similar_by_vector(
+        session, model, vector=embedded.vector, model_name=embedded.model, k=k
     )
-    rows = (await session.execute(stmt)).all()
     out: list[SimilarHit] = []
-    for row, dist in rows:
+    for row, similarity in hits:
         title, summary = project(row)
         out.append(
             SimilarHit(
@@ -364,7 +397,48 @@ async def search_similar(
                 ref_id=row.id,
                 title=title,
                 summary=summary,
-                similarity=1.0 - float(dist),
+                similarity=similarity,
             )
         )
     return out
+
+
+@tool(
+    name="recall_preferences",
+    description="Semantic recall over the user's own interests — the relevant slice of what THIS "
+    "user finds valuable (the sectors/names they track, questions they've asked, topics they've "
+    "opened). Call it when judging whether a finding or event matters, or what to surface.",
+    tasks={
+        TASK_DEEP_RESEARCH,
+        TASK_FOLLOWUP,
+        TASK_SECTION_SNAPSHOT,
+        TASK_COMPANY_PROSE,
+        TASK_TOP_SNAPSHOT,
+        TASK_PULSE_SNAPSHOT,
+    },
+    output_model=UserInterestHit,
+)
+async def recall_preferences(
+    session: AsyncSession,
+    embeddings_provider: EmbeddingsProvider,
+    *,
+    query_text: str,
+    k: int = 5,
+) -> list[UserInterestHit]:
+    """Embed ``query_text`` and return the user-interest lines closest to it by cosine distance —
+    only the relevant slice, not the whole corpus. Mirrors ``search_similar``: only rows embedded
+    with the same model are comparable. Empty when the corpus has no comparable rows yet."""
+    embedded = await embeddings_provider.embed_query(query_text)
+    distance = UserInterest.embedding.cosine_distance(embedded.vector)
+    stmt = (
+        select(UserInterest, distance.label("distance"))
+        .where(UserInterest.embedding.is_not(None))
+        .where(UserInterest.embedding_model == embedded.model)
+        .order_by(distance.asc())
+        .limit(k)
+    )
+    rows = (await session.execute(stmt)).all()
+    return [
+        UserInterestHit(kind=row.kind, text=row.text, similarity=1.0 - float(dist))
+        for row, dist in rows
+    ]

@@ -120,6 +120,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/companies/{company_id}/related": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Company Related
+         * @description Articles across the market most related to this company — semantic discovery, zero LLM.
+         *
+         *     Query vector is the company's most-significant recent embedded event; we cosine-rank all events
+         *     and drop this company's own, so the panel surfaces what's happening *elsewhere* on the same
+         *     theme. Empty when the company has no embedded events yet.
+         */
+        get: operations["company_related_companies__company_id__related_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/companies/{company_id}/watchlist": {
         parameters: {
             query?: never;
@@ -369,6 +393,28 @@ export interface paths {
          * @description One session with its task trail and the source articles it has consulted.
          */
         get: operations["session_detail_research__state_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/research/{state_id}/related": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Session Related
+         * @description Past sessions most related to this one — semantic discovery over the state embeddings, zero
+         *     LLM. Query vector is this row's own rolling-summary embedding; we cosine-rank the others and
+         *     exclude self. 404 if the session is unknown, empty when it has no embedding yet.
+         */
+        get: operations["session_related_research__state_id__related_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -851,6 +897,57 @@ export interface components {
             /** Source Event Ids */
             source_event_ids: number[];
         };
+        /**
+         * RelatedArticleOut
+         * @description An article surfaced by semantic relatedness, carrying its cosine ``similarity`` (1 - dist).
+         */
+        RelatedArticleOut: {
+            /** News Event Id */
+            news_event_id: number;
+            /** Url */
+            url: string;
+            /** Source */
+            source: string | null;
+            /**
+             * Published At
+             * Format: date-time
+             */
+            published_at: string;
+            /** Headline */
+            headline: string;
+            /** Summary */
+            summary: string;
+            /** Significance */
+            significance: number;
+            /** Tickers */
+            tickers: string[];
+            /** Similarity */
+            similarity: number;
+        };
+        /**
+         * RelatedSessionOut
+         * @description A past research session surfaced as related to another, with its cosine ``similarity``.
+         */
+        RelatedSessionOut: {
+            /** State Id */
+            state_id: number;
+            /** Topic */
+            topic: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "open" | "closed";
+            /** Findings */
+            findings: string | null;
+            /**
+             * Last Active At
+             * Format: date-time
+             */
+            last_active_at: string;
+            /** Similarity */
+            similarity: number;
+        };
         /** ResearchCloseRequest */
         ResearchCloseRequest: {
             /**
@@ -1171,6 +1268,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CompanyDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    company_related_companies__company_id__related_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                company_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelatedArticleOut"][];
                 };
             };
             /** @description Validation Error */
@@ -1608,6 +1738,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ResearchSessionDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    session_related_research__state_id__related_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                state_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelatedSessionOut"][];
                 };
             };
             /** @description Validation Error */

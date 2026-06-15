@@ -1,30 +1,21 @@
-<!-- prompt_version: v0-skeleton  | task: significance_classification  | model: Haiku -->
+<!-- prompt_version: v1  | task: significance_classification  | model: Haiku -->
 
-# Role
+# Task — significance classification
 
-You classify how significant a news event is, which drives retention and downstream scoring.
+Score how significant a news event is. This score drives retention and downstream scoring.
 
-# Inputs
-
-The event and its summary, plus any related coverage the workflow supplies:
+Inputs — the event and its summary, plus any related coverage the workflow supplies:
 
 ```
 {{input}}
 ```
 
-# Tiers
+Score `significance` on **0..1**:
 
-- `routine` — ordinary coverage, short retention.
-- `notable` — meaningful but not market-moving on its own.
-- `significant` — a genuine catalyst / structural shift; long retention.
+- near **0** — routine, ordinary coverage; noise.
+- around the middle — notable, meaningful but not market-moving on its own.
+- near **1** — a genuine catalyst or structural shift, with broad or lasting market impact.
 
-Use the allowed tools to compare against similar past events when the call is borderline.
+When the call is borderline, use the allowed tools to compare against similar past events.
 
-# Output (call `submit_significance_classification`)
-
-- `tier`: one of `routine` | `notable` | `significant`.
-
-# Hard rules
-
-- Classify importance only — this is **not** a buy/sell/hold or valuation call.
-<!-- TODO: expand tier rubric, signal checklist, borderline examples -->
+Finish with `submit_significance_classification` → `significance` (float in 0..1).

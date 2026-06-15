@@ -113,6 +113,21 @@ DEEP_RESEARCH_WAKEUP_SIGNIFICANCE = 0.7
 DEEP_RESEARCH_MAX_SESSION_AGE_DAYS = 7
 
 
+# --- Semantic dedup + routing (news ingest) -----------------------------------
+# Near-duplicate gate: the same story from many outlets becomes one event. After the summary is
+# embedded, cosine top-1 over recent events; at/above this similarity the row is a duplicate and is
+# dropped (counted, not written). High floor on purpose — distinct events must not be merged.
+DEDUP_SIMILARITY_THRESHOLD = 0.92
+# Only compare against events from the last N days — the same story doesn't recur weeks apart, and
+# the window bounds the cosine scan.
+DEDUP_LOOKBACK_DAYS = 3
+
+# Orphan-routing gate: a macro/general item with no company match is routed to its closest industry
+# by cosine over the industry embeddings. Below this similarity it stays unrouted (industry_id=None)
+# rather than forced into a poor fit.
+ROUTE_SIMILARITY_THRESHOLD = 0.45
+
+
 # --- Fixed constants ----------------------------------------------------------
 
 # The fixed core of the brief set (user mega-caps are stored on UserPreferences.brief_user).

@@ -12,13 +12,15 @@ from app.api.schemas import (
     CompanyDetail,
     CompanyListItem,
     ProseOut,
+    RelatedArticleOut,
     ScoreOut,
     WatchlistUpdate,
 )
 from app.db.enums import CoverageTier
 from app.db.models.companies import Company
+from app.db.models.news import NewsEvent
 from app.tools.analysis import get_latest_prose, get_latest_scores
-from app.tools.research import get_company, get_news_events, screen_stocks
+from app.tools.research import get_company, get_news_events, screen_stocks, search_similar_by_vector
 from app.tools.tool_schema import ScreenFilters
 
 router = APIRouter(tags=["companies"])
@@ -95,6 +97,57 @@ async def company_detail(
         scores=scores,
         prose=prose,
     )
+
+
+@router.get("/companies/{company_id}/related", response_model=list[RelatedArticleOut])
+async def company_related(
+    company_id: int, limit: int = 8, session: AsyncSession = Depends(ro_session)
+) -> list[RelatedArticleOut]:
+    """Articles across the market most related to this company — semantic discovery, zero LLM.
+
+    Query vector is the company's most-significant recent embedded event; we cosine-rank all events
+    and drop this company's own, so the panel surfaces what's happening *elsewhere* on the same
+    theme. Empty when the company has no embedded events yet."""
+    anchor = (
+        await session.execute(
+            select(NewsEvent)
+            .where(NewsEvent.company_id == company_id)
+            .where(NewsEvent.embedding.is_not(None))
+            .order_by(NewsEvent.significance.desc(), NewsEvent.published_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if anchor is None:
+        return []
+
+    # Over-fetch, then drop the anchor company's own events (the exclusion is by company, not row).
+    hits = await search_similar_by_vector(
+        session,
+        NewsEvent,
+        vector=list(anchor.embedding),
+        model_name=anchor.embedding_model,
+        k=limit + 10,
+    )
+    out: list[RelatedArticleOut] = []
+    for event, similarity in hits:
+        if event.company_id == company_id:
+            continue
+        out.append(
+            RelatedArticleOut(
+                news_event_id=event.id,
+                url=event.url,
+                source=event.source,
+                published_at=event.published_at,
+                headline=event.headline,
+                summary=event.summary,
+                significance=event.significance,
+                tickers=list(event.tickers),
+                similarity=similarity,
+            )
+        )
+        if len(out) >= limit:
+            break
+    return out
 
 
 @router.post("/companies/{company_id}/watchlist")

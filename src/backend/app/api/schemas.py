@@ -28,6 +28,23 @@ class ArticleOut(BaseModel):
     tickers: list[str]
 
 
+class RelatedArticleOut(ArticleOut):
+    """An article surfaced by semantic relatedness, carrying its cosine ``similarity`` (1 - dist)."""
+
+    similarity: float
+
+
+class RelatedSessionOut(BaseModel):
+    """A past research session surfaced as related to another, with its cosine ``similarity``."""
+
+    state_id: int
+    topic: str
+    status: Literal["open", "closed"]
+    findings: str | None
+    last_active_at: datetime
+    similarity: float
+
+
 # --- Brief (market brief: movers + snapshot) ---------------------------------
 
 

@@ -7,6 +7,7 @@ in the web container, Caddy in front), so CORS matters only for the Vite dev ser
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -34,6 +35,38 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s:     %(name)s - %(
 
 logger = logging.getLogger(__name__)
 
+# Holds the boot-time background tasks (e.g. the interest indexer) so they aren't garbage-collected
+# mid-flight; each removes itself on completion.
+_boot_tasks: set[asyncio.Task] = set()
+
+
+async def _index_user_interests() -> None:
+    """Build/refresh the user-interest corpus the ``recall_preferences`` tool searches. Embeddings
+    only, idempotent, best-effort — kept off the boot path so Voyage latency/rate limits can't
+    delay startup."""
+    try:
+        from app.workflows.research import interest_index
+
+        result = await interest_index.run()
+        if result.get("indexed"):
+            logger.info("interest index: %s", result)
+    except Exception:
+        logger.warning("interest index skipped (database/embeddings unavailable?)", exc_info=True)
+
+
+async def _index_industries() -> None:
+    """Embed the industry vocabulary so ``news_ingest`` can route orphan macro news to an industry.
+    Embeddings only, idempotent, best-effort — same off-the-boot-path discipline as the interest
+    corpus so a Voyage hiccup never delays startup."""
+    try:
+        from app.workflows.research import industry_index
+
+        result = await industry_index.run()
+        if result.get("indexed"):
+            logger.info("industry index: %s", result)
+    except Exception:
+        logger.warning("industry index skipped (database/embeddings unavailable?)", exc_info=True)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -58,6 +91,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             logger.info("bootstrapped defaults: %s", created)
     except Exception:
         logger.warning("default bootstrap skipped (database unavailable?)", exc_info=True)
+
+    # Seed the user-interest corpus and embed the industry vocabulary in the background (after
+    # defaults exist, so the declared lines and seeded industries are there to index). Fire-and-
+    # forget: startup never waits on embeddings.
+    for coro in (_index_user_interests(), _index_industries()):
+        task = asyncio.create_task(coro)
+        _boot_tasks.add(task)
+        task.add_done_callback(_boot_tasks.discard)
 
     # Start breadth automation only when enabled (off in dev/tests). The scheduler fires the
     # scheduled workflows; everything else stays callable on demand from the API.

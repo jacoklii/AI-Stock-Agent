@@ -106,33 +106,12 @@ Every company has a `coverage_tier` that controls what the system fetches and sc
 - **Inbox** — chronological notifications.
 **Interactions** — chat, watchlist + industries editing, brief stocks/mega-cap editing, research open/redirect/close, raise/lower weekly budget, open any article URL.
  
-**Notifications** — email digest (snapshot + section snapshots + article list with summaries), brief on iMessage/WhatsApp, in-app inbox mirror. Freshness timestamps everywhere; stale data looks stale.
 
-**Implementation (v1, shipped)** — React + Vite SPA (`src/frontend/`) talking only to the FastAPI
-layer via `/api/*` (prefix stripped at the proxy: Vite dev server, nginx in the web container,
-Caddy in prod). Status surfaces poll the `tasks` ledger (TanStack Query; no sockets). Chat v1 is
-the persistent thread answered by the lightweight `followup` workflow, with explicit adjacent
-actions ("go deeper" → research session; redirect/close on the session view) rather than
-NL-intent parsing. Channel routing lives on `UserPreferences.channels` (`digest_channels` /
-`brief_channels`); on a cloud host the brief goes email + in-app — iMessage requires a macOS
-host, WhatsApp stays stubbed until Business-API credentials exist. Deployment: one GCE VM,
-docker compose, Caddy terminating TLS with basic auth (see `DEPLOY.md`).
  
 ### 2. Application
  
 One agent (`researcher`). Same agent across all tasks; the prompt, model, and tool allowlist vary per call. The agent doesn't have "modes" — workflows give it what it needs for the task at hand.
  
-**Tools (MCP-exposed)**
-
-- `get_company`, `get_financials`, `get_price_history`, `get_news_events`, `get_brief_state`.
-- `screen_stocks`, `search_similar` — semantic search over stored summaries, analysis, and research state.
-- `get_latest_scores`, `get_score_history`, `get_latest_analysis`.
-- `significance` — fast Haiku classifier. Answers: does this event clear the ingest threshold? Returns a score; below threshold the event is dropped and nothing else runs.
-- `fetch_sec_filing`, `fetch_transcript` — used in deep research; cache-first. (General `web_search`/`web_fetch` are Anthropic server-side tools attached to web-enabled tasks, not client tools.)
-- `cache_get`, `cache_set` — TTL cache for external content.
-- `open_research`, `update_research`, `close_research` — agent state across sessions.
-- `send_email`, `send_imessage`, `send_whatsapp` — dedup via `notifications` table before sending.
-
 **Workflows**
 
 - **News ingest** — pull events → `significance` classifier runs → above threshold: embed summary, write row to `news_events`, enqueue affected companies for re-scoring → below threshold: dropped, nothing stored.
@@ -225,15 +204,6 @@ Embedding model name stored alongside every vector.
 - **Scheduler** — cron or APScheduler. Deep research sessions are scheduled or triggered jobs.
 - **Postgres + pgvector** — single store.
 - **Secrets** — env file, not committed.
-
-**Scaling targets (v1)**
-
-- Watchlist ~20–50. Critical industries ~8–15. Discovered surface ~hundreds.
-- News events ~50–500/day.
-- Active states ≤3.
-- Deep sessions ~1–2/day typical.
-- Weekly token budget set by user; agent throttles to fit.
-- Embeddings well under 1 GB.
 
 **Considered, add only when measurably needed**
 

@@ -25,6 +25,7 @@ from app.api.schemas import (
     ArticleOut,
     FollowupRequest,
     FollowupResponse,
+    RelatedSessionOut,
     ResearchCloseRequest,
     ResearchCloseResponse,
     ResearchOpenRequest,
@@ -41,6 +42,7 @@ from app.db.models.state import ResearchState
 from app.db.models.tasks import Task
 from app.db.payloads import StateSources
 from app.db.session import SessionLocal
+from app.tools.research import search_similar_by_vector
 from app.tools.state import open_research
 from app.workflows.research import deep_research
 from app.workflows.research import followup as followup_wf
@@ -149,6 +151,42 @@ async def session_detail(
         source_urls=list(sources.urls),
         tasks=[_task_out(t) for t in tasks],
     )
+
+
+@router.get("/research/{state_id}/related", response_model=list[RelatedSessionOut])
+async def session_related(
+    state_id: int, limit: int = 8, session: AsyncSession = Depends(ro_session)
+) -> list[RelatedSessionOut]:
+    """Past sessions most related to this one — semantic discovery over the state embeddings, zero
+    LLM. Query vector is this row's own rolling-summary embedding; we cosine-rank the others and
+    exclude self. 404 if the session is unknown, empty when it has no embedding yet."""
+    row = (
+        await session.execute(select(ResearchState).where(ResearchState.id == state_id))
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="research session not found")
+    if row.embedding is None:
+        return []
+
+    hits = await search_similar_by_vector(
+        session,
+        ResearchState,
+        vector=list(row.embedding),
+        model_name=row.embedding_model,
+        k=limit,
+        exclude_id=state_id,
+    )
+    return [
+        RelatedSessionOut(
+            state_id=other.id,
+            topic=other.topic,
+            status=other.status.value,
+            findings=other.findings,
+            last_active_at=other.last_active_at,
+            similarity=similarity,
+        )
+        for other, similarity in hits
+    ]
 
 
 async def _run_user_session(state_id: int, body: ResearchOpenRequest) -> None:

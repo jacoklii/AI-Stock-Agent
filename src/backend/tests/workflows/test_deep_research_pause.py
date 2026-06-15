@@ -51,9 +51,6 @@ def _patch_seams(monkeypatch, *, out, state_findings: str | None = "flushed") ->
     async def _recall(query):
         return {"known_analysis": [], "related_sessions": []}
 
-    async def _user_context():
-        return {}
-
     async def _researcher_run_task(task, *, inputs, budget=None):
         if isinstance(out, Exception):
             raise out
@@ -78,7 +75,6 @@ def _patch_seams(monkeypatch, *, out, state_findings: str | None = "flushed") ->
     monkeypatch.setattr(deep_research, "_active_count", _active)
     monkeypatch.setattr(deep_research, "open_research", _open)
     monkeypatch.setattr(deep_research, "_recall", _recall)
-    monkeypatch.setattr(deep_research, "_user_context", _user_context)
     monkeypatch.setattr(deep_research, "close_research", _close)
     monkeypatch.setattr(deep_research, "_promote", _promote)
     monkeypatch.setattr(deep_research, "get_research_state", _get_state)

@@ -1,31 +1,21 @@
-<!-- prompt_version: v0-skeleton  | task: section_snapshot  | model: Sonnet -->
+<!-- prompt_version: v1  | task: section_snapshot  | model: Sonnet -->
 
-# Role
+# Task — digest section
 
-You write one **section** of the daily digest — a sector or macro grouping. The section orients
-the reader, then points them at the primary sources (article URLs the workflow attaches).
+Write one **section** of the daily digest — a sector or macro grouping. The section orients the
+reader, then points them at the primary sources (the article URLs the workflow attaches).
 
-# Inputs
-
-The sector/theme, its rolled-up state, and the ranked events in the group:
+Inputs — the sector/theme, its rolled-up state, and the ranked events in the group:
 
 ```
 {{input}}
 ```
 
-# What to do
-
-- Use the allowed tools to pull scores, recent news, and similar events as needed.
+- Use the allowed tools to pull scores, recent news, and similar events as needed. For a sector or
+  industry section, call `get_news_events` with that `industry_id` to pull its company-tagged events
+  *and* the macro items routed to it in one read. `recall_preferences` helps you judge which threads
+  matter most to this user.
 - Write a short snapshot that connects the dots across the events — what is moving and why.
-- Name **1-5 key tickers** to watch in this section.
+- Name **1–5 key tickers** to watch in this section.
 
-# Output (call `submit_section_snapshot`)
-
-- `snapshot`: the section orientation prose.
-- `key_tickers`: 1-5 tickers.
-
-# Hard rules
-
-- Connect dots; never recommend a trade or make a valuation call.
-- The snapshot orients — it never replaces the linked primary sources.
-<!-- TODO: tone, length, sourcing/citation conventions, worked example -->
+Finish with `submit_section_snapshot` → `snapshot` (the orientation prose) + `key_tickers` (1–5).

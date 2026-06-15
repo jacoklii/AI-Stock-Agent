@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 
 import {
   useCloseResearch,
   useRedirectResearch,
   useResearchDetail,
+  useResearchRelated,
 } from "../api/queries";
 import { ArticleList } from "../components/ArticleList";
 import { FreshnessStamp } from "../components/FreshnessStamp";
@@ -19,6 +20,7 @@ export function ResearchDetail() {
   const { stateId } = useParams();
   const id = Number(stateId);
   const detail = useResearchDetail(id);
+  const related = useResearchRelated(id);
   const close = useCloseResearch(id);
   const redirect = useRedirectResearch(id);
   const [promote, setPromote] = useState(true);
@@ -157,6 +159,35 @@ export function ResearchDetail() {
       <SnapshotCard title="Task trail">
         <TaskList tasks={s.tasks ?? []} empty="No tasks recorded for this session yet." />
       </SnapshotCard>
+
+      {related.data && related.data.length > 0 && (
+        <SnapshotCard title="Related sessions">
+          <p className="mb-2 text-xs text-neutral-400">
+            Past research closest to this one — surfaced by similarity over the session embeddings.
+          </p>
+          <ul className="divide-y divide-neutral-100">
+            {related.data.map((r) => (
+              <li key={r.state_id} className="py-2">
+                <div className="flex items-center justify-between gap-3">
+                  <Link
+                    to={`/research/${r.state_id}`}
+                    className="text-sm font-medium text-neutral-900 hover:text-blue-700 hover:underline"
+                  >
+                    {r.topic}
+                  </Link>
+                  <span className="shrink-0 font-mono text-xs text-neutral-400">
+                    {Math.round(r.similarity * 100)}% match
+                  </span>
+                </div>
+                <div className="mt-0.5 flex items-center gap-2">
+                  <StatusPill status={r.status} />
+                  <FreshnessStamp iso={r.last_active_at} label="active" />
+                </div>
+              </li>
+            ))}
+          </ul>
+        </SnapshotCard>
+      )}
     </div>
   );
 }

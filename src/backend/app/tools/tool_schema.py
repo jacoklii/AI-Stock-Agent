@@ -186,6 +186,15 @@ class SimilarHit(BaseModel):
     similarity: float
 
 
+class UserInterestHit(BaseModel):
+    """A line from the user-interest corpus the agent recalled — what *this* user finds valuable,
+    with its cosine *similarity* to the query. ``kind`` is declared | question | topic."""
+
+    kind: str
+    text: str
+    similarity: float
+
+
 # --- SEC / cache (deep-research external reads) ------------------------------
 
 

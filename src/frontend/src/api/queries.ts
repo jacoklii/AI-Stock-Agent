@@ -65,6 +65,19 @@ export function useResearchDetail(stateId: number) {
   });
 }
 
+export function useResearchRelated(stateId: number) {
+  return useQuery({
+    queryKey: ["research", stateId, "related"],
+    queryFn: async () =>
+      unwrap(
+        await api.GET("/research/{state_id}/related", {
+          params: { path: { state_id: stateId } },
+        }),
+      ),
+    staleTime: 60_000,
+  });
+}
+
 export function useOpenResearch() {
   const qc = useQueryClient();
   return useMutation({
@@ -239,6 +252,19 @@ export function useCompanyDetail(companyId: number) {
           params: { path: { company_id: companyId } },
         }),
       ),
+  });
+}
+
+export function useCompanyRelated(companyId: number) {
+  return useQuery({
+    queryKey: ["companies", "detail", companyId, "related"],
+    queryFn: async () =>
+      unwrap(
+        await api.GET("/companies/{company_id}/related", {
+          params: { path: { company_id: companyId } },
+        }),
+      ),
+    staleTime: 60_000,
   });
 }
 

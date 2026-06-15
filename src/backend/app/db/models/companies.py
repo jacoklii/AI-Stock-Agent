@@ -12,10 +12,10 @@ All joins elsewhere are on ``company_id``, never ticker.
 
 from __future__ import annotations
 
-from sqlalchemy import Boolean, ForeignKey, String, Text
+from sqlalchemy import Boolean, ForeignKey, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db.base import Base, TimestampMixin, intpk
+from app.db.base import Base, TimestampMixin, embedding_vector, intpk
 from app.db.enums import CoverageTier, coverage_tier_enum
 
 
@@ -28,12 +28,26 @@ class Industry(Base, TimestampMixin):
     """
 
     __tablename__ = "industries"
+    __table_args__ = (
+        Index(
+            "ix_industries_embedding_hnsw",
+            "embedding",
+            postgresql_using="hnsw",
+            postgresql_ops={"embedding": "vector_cosine_ops"},
+        ),
+    )
 
     id: Mapped[intpk]
     key: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(128))
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+
+    # Embedding of "{name}: {description}" — orphan macro news is routed to its closest industry by
+    # cosine over these. Backfilled idempotently at boot (embeddings-only); the model name rides
+    # along so a future embedding swap is a detectable, explicit backfill, never silent.
+    embedding: Mapped[list[float] | None] = mapped_column(embedding_vector(), nullable=True)
+    embedding_model: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
 class Company(Base, TimestampMixin):

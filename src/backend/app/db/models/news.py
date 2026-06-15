@@ -38,6 +38,12 @@ class NewsEvent(Base, TimestampMixin, FreshnessMixin):
     company_id: Mapped[int | None] = mapped_column(
         ForeignKey("companies.id", ondelete="SET NULL"), index=True, nullable=True
     )
+    # Industry home for the event. Ticker-matched events inherit the company's industry; orphan
+    # macro/general items are routed to their closest industry by embedding similarity at ingest, so
+    # a section can pull macro context that names no single company. Null when nothing fits.
+    industry_id: Mapped[int | None] = mapped_column(
+        ForeignKey("industries.id", ondelete="SET NULL"), index=True, nullable=True
+    )
     # Unique so re-ingest is idempotent: the hourly breadth run dedups against this before
     # paying for summarization, and the constraint backstops any race.
     url: Mapped[str] = mapped_column(Text, unique=True)
