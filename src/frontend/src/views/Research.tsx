@@ -8,9 +8,12 @@ import { fmtDateTime } from "../lib/format";
 import { OriginBadge } from "../components/OriginBadge";
 import { SnapshotCard } from "../components/SnapshotCard";
 import { StatusPill } from "../components/StatusPill";
+import { WorkingStrip } from "../components/WorkingStrip";
+import { isStalled } from "../lib/freshness";
 import type { ResearchSessionOut } from "../api/types";
 
 function SessionRow({ session }: { session: ResearchSessionOut }) {
+  const stalled = session.status === "open" && isStalled(session.last_active_at);
   return (
     <Link
       to={`/research/${session.state_id}`}
@@ -23,8 +26,12 @@ function SessionRow({ session }: { session: ResearchSessionOut }) {
           <StatusPill status={session.status} />
         </div>
       </div>
-      {session.current_task && (
-        <p className="mt-1 truncate text-xs text-neutral-500">→ {session.current_task}</p>
+      {session.status === "open" && session.progress ? (
+        <WorkingStrip progress={session.progress} className="mt-1 text-xs text-blue-700" />
+      ) : (
+        session.current_task && (
+          <p className="mt-1 truncate text-xs text-neutral-500">→ {session.current_task}</p>
+        )
       )}
       {session.findings && (
         <p className="mt-1 line-clamp-2 text-xs text-neutral-500">{session.findings}</p>
@@ -42,6 +49,7 @@ function SessionRow({ session }: { session: ResearchSessionOut }) {
           iso={session.status === "closed" ? session.closed_at : session.last_active_at}
           label={session.status === "closed" ? "closed" : "active"}
           thresholdHours={session.status === "closed" ? 168 : 24}
+          stalled={stalled}
         />
       </div>
     </Link>

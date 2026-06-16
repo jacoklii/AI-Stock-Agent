@@ -15,22 +15,45 @@ from __future__ import annotations
 from typing import Any
 
 from app.config import get_settings
+from app.providers.errors import ProviderRequestError, ProviderUnavailable, RateLimited
+
+
+def _classify(exc: Exception) -> ProviderRequestError | ProviderUnavailable | RateLimited | None:
+    """Map an Anthropic SDK exception onto the provider taxonomy, by status code / type name so we
+    never hard-import the SDK exception classes. Returns ``None`` if it isn't a recognizable
+    transport error (then it's treated as internal upstream)."""
+    status = getattr(exc, "status_code", None)
+    name = type(exc).__name__.lower()
+    if status == 429 or "ratelimit" in name:
+        return RateLimited(f"anthropic rate limit: {exc}", provider="anthropic")
+    if (isinstance(status, int) and status >= 500) or "timeout" in name or "connection" in name:
+        return ProviderUnavailable(f"anthropic unavailable: {exc}", provider="anthropic")
+    if isinstance(status, int) and 400 <= status < 500:
+        return ProviderRequestError(f"anthropic rejected request ({status}): {exc}", provider="anthropic")
+    return None
 
 
 class LLMProvider:
     """Stable surface over the Anthropic Messages API. Async-native (no thread dispatch)."""
 
     def __init__(self) -> None:
-        self._api_key = get_settings().anthropic_api_key
+        settings = get_settings()
+        self._api_key = settings.anthropic_api_key
+        self._timeout = settings.llm_timeout_s
+        self._max_retries = settings.llm_max_retries
         self._client: Any | None = None
 
     def _ensure_client(self) -> Any:
         # Lazy so importing this module never requires the SDK/key to be present — only an
         # actual call does. Keeps import-smoke and tests with a placeholder key clean.
+        # ``timeout``/``max_retries`` bound a hung call: the SDK backs off on transient errors
+        # itself, and a call that never returns trips the timeout instead of stalling a session.
         if self._client is None:
             from anthropic import AsyncAnthropic
 
-            self._client = AsyncAnthropic(api_key=self._api_key)
+            self._client = AsyncAnthropic(
+                api_key=self._api_key, timeout=self._timeout, max_retries=self._max_retries
+            )
         return self._client
 
     async def create(
@@ -73,7 +96,13 @@ class LLMProvider:
             kwargs["container"] = container
         if extra_headers is not None:
             kwargs["extra_headers"] = extra_headers
-        return await client.messages.create(**kwargs)
+        try:
+            return await client.messages.create(**kwargs)
+        except Exception as exc:  # noqa: BLE001 — classify transport failures, re-raise the rest
+            mapped = _classify(exc)
+            if mapped is not None:
+                raise mapped from exc
+            raise
 
 
 def get_llm_provider() -> LLMProvider:

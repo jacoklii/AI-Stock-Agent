@@ -25,6 +25,7 @@ from app.api.schemas import (
     ArticleOut,
     FollowupRequest,
     FollowupResponse,
+    ProgressOut,
     RelatedSessionOut,
     ResearchCloseRequest,
     ResearchCloseResponse,
@@ -66,6 +67,7 @@ def _session_out(row: ResearchState) -> ResearchSessionOut:
         status=row.status.value,
         initiated_by=row.initiated_by,
         current_task=row.current_task,
+        progress=ProgressOut(**row.progress.model_dump()) if row.progress else None,
         findings=row.findings,
         open_questions=row.open_questions,
         opened_at=row.opened_at,
@@ -83,6 +85,7 @@ def _task_out(row: Task) -> TaskOut:
         started_at=row.started_at,
         completed_at=row.completed_at,
         error_message=row.error_message,
+        error_kind=row.error_kind,
         tokens_used=row.tokens_used,
         state_id=row.state_id,
         # initiated_by rides in the task's params (extra-allowed) for research tasks only.
@@ -279,10 +282,13 @@ async def redirect_session(
     body: ResearchRedirectRequest,
     session: AsyncSession = Depends(rw_session),
 ) -> ResearchSessionOut:
-    """Steer an open session: update its topic and/or current task.
+    """Steer an open session toward a new direction *without restarting it or losing its topic*.
 
-    The next resume reconstructs context from the state row, so the redirect takes effect at the
-    next wakeup. Direct ORM update — the tools-only rule constrains the AI, not the API."""
+    The steer is dropped into the in-process redirect queue, which the running agent loop polls
+    each turn and injects as a mid-session user instruction — so the live research actually
+    changes course. The original ``topic`` is preserved (the session's identity); the steer is
+    reflected in ``current_task`` for the UI. Direct ORM update — the tools-only rule constrains
+    the AI, not the API."""
     row = (
         await session.execute(select(ResearchState).where(ResearchState.id == state_id))
     ).scalar_one_or_none()
@@ -291,7 +297,8 @@ async def redirect_session(
     if row.status is not StateStatus.open:
         raise HTTPException(status_code=409, detail="session is closed")
     if body.topic:
-        row.topic = body.topic
+        deep_research.push_redirect(state_id, body.topic)
+        row.current_task = body.topic  # surface the new focus; keep the original topic intact
     if body.current_task is not None:
         row.current_task = body.current_task
     await session.commit()

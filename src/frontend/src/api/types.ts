@@ -21,4 +21,5 @@ export type IndustryView = S["IndustryView"];
 export type PreferencesOut = S["PreferencesOut"];
 export type ResearchSessionOut = S["ResearchSessionOut"];
 export type ResearchSessionDetail = S["ResearchSessionDetail"];
+export type ProgressOut = S["ProgressOut"];
 export type TaskOut = S["TaskOut"];

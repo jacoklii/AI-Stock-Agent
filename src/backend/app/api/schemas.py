@@ -222,6 +222,18 @@ class CompanyListItem(BaseModel):
 # --- Research sessions ---------------------------------------------------------
 
 
+class ProgressOut(BaseModel):
+    """Live heartbeat of a running session — wire mirror of the ``StateProgress`` JSONB payload."""
+
+    phase: str | None = None
+    iteration: int = 0
+    max_iters: int = 0
+    tool_calls: int = 0
+    sources: int = 0
+    tokens_spent: int = 0
+    updated_at: datetime | None = None
+
+
 class ResearchSessionOut(BaseModel):
     state_id: int
     topic: str
@@ -229,6 +241,8 @@ class ResearchSessionOut(BaseModel):
     # Who opened it: "user" (requested from the interface) or "schedule" (the agent's autonomous work).
     initiated_by: str
     current_task: str | None
+    # Live progress while running (null when idle / closed).
+    progress: ProgressOut | None = None
     findings: str | None
     open_questions: str | None
     opened_at: datetime
@@ -244,6 +258,8 @@ class TaskOut(BaseModel):
     started_at: datetime | None
     completed_at: datetime | None
     error_message: str | None
+    # Where a failure started: "external" (provider/dependency) vs "internal" (our bug); null on success.
+    error_kind: str | None = None
     tokens_used: int | None
     state_id: int | None
     # For research tasks: "user" or "schedule" (who initiated it); None for tasks with no initiator

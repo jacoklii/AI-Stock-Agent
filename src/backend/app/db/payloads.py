@@ -8,6 +8,8 @@ of those payloads — kept separate from API/response schemas (which live in ``a
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict, Field, RootModel
 
 # --- Coverage / preferences ---------------------------------------------------
@@ -111,6 +113,20 @@ class StateTask(BaseModel):
 
 class StateTaskList(RootModel[list[StateTask]]):
     """Ordered list of tasks (previous/finished) stored on the state row."""
+
+
+class StateProgress(BaseModel):
+    """Live heartbeat of a running session — written by the agent loop every iteration so the UI
+    can show what it's doing instead of a frozen row. Ephemeral working state, not a record:
+    overwritten each turn and meaningless once the session closes."""
+
+    phase: str | None = None  # "gathering" | "synthesizing" | "grounding"
+    iteration: int = 0
+    max_iters: int = 0
+    tool_calls: int = 0  # cumulative client + server tool uses this session
+    sources: int = 0  # distinct sources cited so far
+    tokens_spent: int = 0  # effective (cost-weighted) tokens spent so far
+    updated_at: datetime | None = None
 
 
 # --- Tasks --------------------------------------------------------------------

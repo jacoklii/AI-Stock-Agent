@@ -51,7 +51,7 @@ def _patch_seams(monkeypatch, *, out, state_findings: str | None = "flushed") ->
     async def _recall(query):
         return {"known_analysis": [], "related_sessions": []}
 
-    async def _researcher_run_task(task, *, inputs, budget=None):
+    async def _researcher_run_task(task, *, inputs, budget=None, progress=None, steer=None):
         if isinstance(out, Exception):
             raise out
         return out

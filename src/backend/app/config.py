@@ -74,6 +74,25 @@ class Settings(BaseSettings):
     # Bound on the agent's per-task tool-use loop — a hard stop on autonomous tool calls.
     agent_max_tool_iters: int = 8
 
+    # --- Resilience: timeouts, retries, rate limiting -------------------------
+    # Voyage free tier is 3 requests/min. A single process-wide limiter paces *every* embed call
+    # (boot indexers, agent recall, close-embedding) to this ceiling so they can't collectively
+    # blow the quota. Raising it is safe once a paid Voyage plan lifts the wall.
+    voyage_max_rpm: int = 3
+    # Per-embed-call timeout (seconds) and bounded retry attempts on transient Voyage failures.
+    embed_timeout_s: float = 30.0
+    embed_retry_attempts: int = 3
+    # Anthropic request timeout (seconds) and SDK-level retry count on transient failures, so a
+    # hung model call can't stall a research session indefinitely. Generous on purpose: one
+    # deep-research turn runs server-side web_search/web_fetch and legitimately takes minutes —
+    # a tight cap (we briefly shipped 120s) kills real work mid-flight. 600s matches the SDK
+    # default and still bounds a genuinely hung call; pause_turn checkpoints keep turns shorter.
+    llm_timeout_s: float = 600.0
+    llm_max_retries: int = 2
+    # An open research session whose heartbeat (last_active_at) is older than this is treated as
+    # *stalled* in the UI — a genuine "something broke" signal now that the agent beats every turn.
+    research_stalled_after_s: int = 240
+
     # Breadth automation: start the in-process scheduler in the API lifespan. Off by default so
     # dev/tests never fire external-API jobs; the always-on host sets ENABLE_SCHEDULER=true.
     enable_scheduler: bool = False

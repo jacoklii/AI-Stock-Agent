@@ -27,6 +27,7 @@ from app.db.enums import TaskStatus
 from app.db.models.tasks import Task
 from app.db.payloads import TaskParams, TaskResult
 from app.db.session import SessionLocal
+from app.providers.errors import ProviderError
 
 T = TypeVar("T")
 
@@ -83,6 +84,9 @@ async def run_task(
         except Exception as exc:
             task.status = TaskStatus.failed
             task.error_message = f"{type(exc).__name__}: {exc}"
+            # Origin: a typed ProviderError is an external dependency failure; anything else is
+            # our own (DB, validation, logic). This is what makes "where did it break" answerable.
+            task.error_kind = "external" if isinstance(exc, ProviderError) else "internal"
             task.tokens_used = handle.tokens or None  # a failed run still spent tokens
             task.completed_at = _utcnow()
             await session.commit()

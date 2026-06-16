@@ -121,17 +121,25 @@ def test_close_session_404_when_missing(monkeypatch, client) -> None:
     assert client.post("/research/999/close", json={}).status_code == 404
 
 
-def test_redirect_updates_open_session(client) -> None:
+def test_redirect_steers_without_clobbering_topic(client, monkeypatch) -> None:
+    """A redirect queues a live steer for the running session and reflects the new focus in
+    current_task, but preserves the session's original topic (its identity)."""
+    pushed: list[tuple[int, str]] = []
+    monkeypatch.setattr(
+        research_routes.deep_research,
+        "push_redirect",
+        lambda state_id, text: pushed.append((state_id, text)),
+    )
     row = _state_row()
+    original_topic = row.topic
     fake = FakeSession([FakeResult(scalar=row)])
     use_session(fake)
 
-    resp = client.post(
-        "/research/7/redirect", json={"topic": "TSMC exposure", "current_task": "check capex"}
-    )
+    resp = client.post("/research/7/redirect", json={"topic": "TSMC exposure"})
     assert resp.status_code == 200
-    assert row.topic == "TSMC exposure"
-    assert row.current_task == "check capex"
+    assert pushed == [(7, "TSMC exposure")]  # the running loop will pick this up
+    assert row.topic == original_topic  # original question preserved, not replaced
+    assert row.current_task == "TSMC exposure"  # new focus surfaced for the UI
     assert fake.commits == 1
 
 

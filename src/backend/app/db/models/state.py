@@ -22,7 +22,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, PydanticJSONB, TimestampMixin, embedding_vector, intpk
 from app.db.enums import StateStatus, state_status_enum
-from app.db.payloads import StateSources, StateTaskList
+from app.db.payloads import StateProgress, StateSources, StateTaskList
 
 
 class ResearchState(Base, TimestampMixin):
@@ -52,6 +52,12 @@ class ResearchState(Base, TimestampMixin):
     )
     # What the agent is doing right now (null when idle / between tasks).
     current_task: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Live heartbeat of the running agent loop (phase, iteration, tool/source/token counters),
+    # overwritten every turn so the UI can show progress instead of a frozen row. Null until the
+    # session's first beat; stale once closed.
+    progress: Mapped[StateProgress | None] = mapped_column(
+        PydanticJSONB(StateProgress), nullable=True
+    )
     # Previous and finished tasks within this session (in-session task list).
     tasks: Mapped[StateTaskList | None] = mapped_column(PydanticJSONB(StateTaskList), nullable=True)
     findings: Mapped[str | None] = mapped_column(Text, nullable=True)

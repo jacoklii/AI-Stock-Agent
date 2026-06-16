@@ -883,6 +883,41 @@ export interface components {
             weekly_token_budget?: number | null;
             channels?: components["schemas"]["ChannelsOut"] | null;
         };
+        /**
+         * ProgressOut
+         * @description Live heartbeat of a running session — wire mirror of the ``StateProgress`` JSONB payload.
+         */
+        ProgressOut: {
+            /** Phase */
+            phase?: string | null;
+            /**
+             * Iteration
+             * @default 0
+             */
+            iteration: number;
+            /**
+             * Max Iters
+             * @default 0
+             */
+            max_iters: number;
+            /**
+             * Tool Calls
+             * @default 0
+             */
+            tool_calls: number;
+            /**
+             * Sources
+             * @default 0
+             */
+            sources: number;
+            /**
+             * Tokens Spent
+             * @default 0
+             */
+            tokens_spent: number;
+            /** Updated At */
+            updated_at?: string | null;
+        };
         /** ProseOut */
         ProseOut: {
             /** Kind */
@@ -1007,6 +1042,7 @@ export interface components {
             initiated_by: string;
             /** Current Task */
             current_task: string | null;
+            progress?: components["schemas"]["ProgressOut"] | null;
             /** Findings */
             findings: string | null;
             /** Open Questions */
@@ -1047,6 +1083,7 @@ export interface components {
             initiated_by: string;
             /** Current Task */
             current_task: string | null;
+            progress?: components["schemas"]["ProgressOut"] | null;
             /** Findings */
             findings: string | null;
             /** Open Questions */
@@ -1099,6 +1136,8 @@ export interface components {
             completed_at: string | null;
             /** Error Message */
             error_message: string | null;
+            /** Error Kind */
+            error_kind?: string | null;
             /** Tokens Used */
             tokens_used: number | null;
             /** State Id */

@@ -15,6 +15,8 @@ import { SnapshotCard } from "../components/SnapshotCard";
 import { SourceChips } from "../components/SourceChips";
 import { StatusPill } from "../components/StatusPill";
 import { TaskList } from "../components/TaskList";
+import { WorkingStrip } from "../components/WorkingStrip";
+import { isStalled } from "../lib/freshness";
 
 /** One session: live findings, its task trail, sources, and the user's direction levers. */
 export function ResearchDetail() {
@@ -31,6 +33,7 @@ export function ResearchDetail() {
   if (detail.isError || !detail.data)
     return <p className="text-sm text-red-600">Session not found.</p>;
   const s = detail.data;
+  const stalled = s.status === "open" && isStalled(s.last_active_at);
 
   return (
     <div className="mx-auto max-w-3xl space-y-4">
@@ -43,6 +46,7 @@ export function ResearchDetail() {
             <FreshnessStamp
               iso={s.status === "closed" ? s.closed_at : s.last_active_at}
               label={s.status === "closed" ? "closed" : "active"}
+              stalled={stalled}
             />
           </div>
         </div>
@@ -90,10 +94,16 @@ export function ResearchDetail() {
         </p>
       )}
 
-      {s.current_task && (
-        <p className="rounded-md bg-blue-50 px-3 py-2 text-sm text-blue-800">
-          Currently: {s.current_task}
-        </p>
+      {(s.current_task || s.progress) && (
+        <div className="rounded-md bg-blue-50 px-3 py-2 text-sm text-blue-800">
+          {s.current_task && <p>Currently: {s.current_task}</p>}
+          {s.progress && (
+            <WorkingStrip
+              progress={s.progress}
+              className={`text-xs font-medium text-blue-700 ${s.current_task ? "mt-1" : ""}`}
+            />
+          )}
+        </div>
       )}
 
       <SnapshotCard title="Findings">

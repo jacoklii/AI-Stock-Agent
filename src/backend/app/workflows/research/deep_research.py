@@ -20,6 +20,7 @@ holds a slot forever.
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func, or_, select
@@ -31,15 +32,45 @@ from app.db.enums import AnalysisType, StateStatus
 from app.db.models.analysis import Analysis
 from app.db.models.news import NewsEvent
 from app.db.models.state import ResearchState
-from app.db.payloads import AnalysisContent, AnalysisSupportingInputs
+from app.db.payloads import AnalysisContent, AnalysisSupportingInputs, StateProgress
 from app.db.session import SessionLocal, readonly_session
 from app.providers.embeddings import get_embeddings_provider
+from app.providers.errors import ProviderError
 from app.tools.registry import TASK_DEEP_RESEARCH
 from app.tools.research import search_similar
 from app.tools.state import close_research, get_research_state, open_research, update_research
 from app.workflows.concurrency import workflow_slot
 from app.workflows.runtime import run_task
 from app.workflows.triggers import WF_DEEP_RESEARCH
+
+logger = logging.getLogger(__name__)
+
+
+# --- Live redirect steering -----------------------------------------------------
+# A user-opened session runs once as an in-process asyncio task; the redirect endpoint lives in the
+# same process. Rewriting the state row's topic can't steer an in-flight run (the agent captured its
+# inputs at start and never re-reads them). Instead the endpoint drops the steer text here and the
+# agent loop pops it each turn, injecting it as a mid-session user instruction — so a redirect
+# actually redirects the running research instead of just relabelling it.
+_PENDING_REDIRECTS: dict[int, list[str]] = {}
+
+
+def push_redirect(state_id: int, text: str) -> None:
+    """Queue a steer for a running session (called by the API redirect route)."""
+    _PENDING_REDIRECTS.setdefault(state_id, []).append(text)
+
+
+def _pop_redirect(state_id: int) -> str | None:
+    """Drain queued steers for a session into one instruction (coalesced), clearing the queue."""
+    queued = _PENDING_REDIRECTS.get(state_id)
+    if not queued:
+        return None
+    _PENDING_REDIRECTS[state_id] = []
+    return " ".join(queued)
+
+
+def _clear_redirects(state_id: int) -> None:
+    _PENDING_REDIRECTS.pop(state_id, None)
 
 
 async def _active_count() -> int:
@@ -54,12 +85,48 @@ async def _active_count() -> int:
 
 
 async def _recall(query: str) -> dict:
-    """Findings-first retrieval: what we already know about this query (long-term memory)."""
+    """Findings-first retrieval: what we already know about this query (long-term memory).
+
+    Seeding is best-effort: if embeddings are unavailable (rate limit, upstream blip), the session
+    starts with an empty recall rather than crashing before the agent runs — the agent can still
+    research from scratch. The degradation is flagged so the workflow records it."""
     embeddings = get_embeddings_provider()
-    async with readonly_session() as session:
-        known_analysis = await search_similar(session, embeddings, query_text=query, scope="analysis", k=5)
-        related_sessions = await search_similar(session, embeddings, query_text=query, scope="state", k=3)
+    try:
+        async with readonly_session() as session:
+            known_analysis = await search_similar(session, embeddings, query_text=query, scope="analysis", k=5)
+            related_sessions = await search_similar(session, embeddings, query_text=query, scope="state", k=3)
+    except ProviderError:
+        logger.warning("recall seeding skipped — embeddings unavailable", exc_info=True)
+        return {"known_analysis": [], "related_sessions": [], "recall_degraded": True}
     return {"known_analysis": known_analysis, "related_sessions": related_sessions}
+
+
+def _heartbeat(state_id: int):
+    """Build the per-iteration progress callback for a session. Each beat overwrites the state
+    row's ``progress`` and touches ``last_active_at`` so the UI sees a live, advancing session
+    instead of a row frozen for the minutes a long tool-use turn takes. ``sources`` is read off
+    what the agent has actually flushed, so it only grows as real provenance accrues."""
+
+    async def beat(snapshot: dict) -> None:
+        async with SessionLocal() as session:
+            row = await session.get(ResearchState, state_id)
+            if row is None:
+                return
+            srcs = row.sources
+            n_sources = len(set(srcs.source_ids)) + len(set(srcs.urls)) if srcs else 0
+            row.progress = StateProgress(
+                phase=snapshot.get("phase"),
+                iteration=snapshot.get("iteration", 0),
+                max_iters=snapshot.get("max_iters", 0),
+                tool_calls=snapshot.get("tool_calls", 0),
+                sources=n_sources,
+                tokens_spent=snapshot.get("tokens_spent", 0),
+                updated_at=datetime.now(timezone.utc),
+            )
+            row.last_active_at = datetime.now(timezone.utc)
+            await session.commit()
+
+    return beat
 
 
 async def _promote(
@@ -156,6 +223,8 @@ async def run(
         out = None
         try:
             recalled = await _recall(query)
+            if recalled.pop("recall_degraded", False):
+                task.count("recall_degraded")
             inputs = {
                 "query": query,
                 "topic": topic,
@@ -170,12 +239,22 @@ async def run(
             }
             if candidates is not None:
                 inputs["candidates"] = candidates
-            out = await get_researcher().run_task(TASK_DEEP_RESEARCH, inputs=inputs, budget=budget)
+            async def _steer() -> str | None:
+                return _pop_redirect(state_id)
+
+            out = await get_researcher().run_task(
+                TASK_DEEP_RESEARCH,
+                inputs=inputs,
+                budget=budget,
+                progress=_heartbeat(state_id),
+                steer=_steer,
+            )
         finally:
             # Record spend always — effective (cost-weighted) tokens: cache writes at 1.25x,
             # cache reads at 0.1x (see agent._usage_tokens), so tokens_used tracks real cost.
             # Close the session (embedding its findings) on completion or failure — but a
             # *paused* session stays open so the next wakeup resumes it.
+            _clear_redirects(state_id)
             task.tokens = budget.spent
             paused = out is not None and out.status == "paused"
             if not paused:

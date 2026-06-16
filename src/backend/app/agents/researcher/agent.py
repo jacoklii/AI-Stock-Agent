@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -30,6 +31,7 @@ from pydantic import BaseModel, ValidationError
 from app.agents.budget import Budget
 from app.agents.researcher import schemas
 from app.config import DEEP_RESEARCH_MAX_ITERS, MODEL_HAIKU, MODEL_OPUS, MODEL_SONNET, get_settings
+from app.providers.errors import ProviderError
 from app.providers.llm import LLMProvider, get_llm_provider
 from app.tools.invoke import invoke_tool, tool_json_schema
 from app.tools.registry import (
@@ -63,6 +65,12 @@ _MAX_GROUNDING_NUDGES = 1
 _GROUNDING_NUDGE = (
     "Every finding must be grounded: cite the news_event ids it draws on in `sources` and/or "
     "the web pages it draws on in `source_urls`. Add them, then resubmit."
+)
+
+# Prepended to a user redirect so the model treats it as a steer, not as a fact to research.
+_STEER_PREFIX = (
+    "↪ The user has redirected this research mid-session. Adjust your focus and priorities "
+    "accordingly while keeping any prior findings that stay relevant: "
 )
 
 
@@ -197,10 +205,20 @@ class Researcher:
         inputs: dict[str, Any],
         max_tokens: int = 4096,
         budget: Budget | None = None,
+        progress: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
+        steer: Callable[[], Awaitable[str | None]] | None = None,
     ) -> BaseModel:
         """Run one task to a structured result. If ``budget`` is given, each LLM call's token
         usage is accumulated onto it and the loop self-paces — once the ceiling is reached the
-        agent is forced to submit on the next turn (a graceful stop, not a crash)."""
+        agent is forced to submit on the next turn (a graceful stop, not a crash).
+
+        ``progress``, if given, is awaited once per loop iteration with a DB-agnostic snapshot
+        (phase, iteration, cumulative tool calls, tokens spent) so a caller can surface what the
+        agent is doing live. The agent never lets a failing callback break the loop.
+
+        ``steer``, if given, is polled each iteration for a mid-session user redirect; when it
+        returns text the agent injects it as a user instruction at the next user turn, so a
+        running session can actually be steered without restarting it."""
         spec = TASKS[task_name]
         max_iters = spec.max_iters or self._max_iters
         allowlist = {t.name: t for t in get_tools_for(task_name)}
@@ -220,12 +238,21 @@ class Researcher:
             {"role": "user", "content": json.dumps(_jsonable(inputs), default=str)}
         ]
         grounding_nudges = 0
+        tool_calls_total = 0  # cumulative client + server tool uses, for the heartbeat
+        # Pending user redirects, delivered at the next user turn (tool results / submit nudge) so
+        # we never break the API's strict user/assistant + tool_result turn structure.
+        pending_steer: list[str] = []
         # Server-side web tools execute in a server container; once a response carries its id,
         # every later call in this task must send it back or a paused turn cannot resume.
         container_id: str | None = None
         server_paused = False
 
         for attempt in range(max_iters):
+            # Poll for a mid-session redirect; buffer it for the next user turn.
+            if steer is not None:
+                steer_text = await self._steer_text(steer)
+                if steer_text:
+                    pending_steer.append(steer_text)
             # Force the submit tool on the last attempt, or once the budget ceiling is hit, so we
             # always end with structured output and never overspend. Never force while a server
             # turn is paused — the API rejects a tool_choice over pending server tool uses; the
@@ -254,22 +281,40 @@ class Researcher:
             ]
             if server_uses:
                 logger.info("server tools ran for %s: %s", task_name, server_uses)
+            tool_uses = [b for b in resp.content if getattr(b, "type", None) == "tool_use"]
+            submit_block = next((b for b in tool_uses if b.name == submit["name"]), None)
             server_paused = getattr(resp, "stop_reason", None) == "pause_turn"
+
+            # Heartbeat: one beat per iteration so a watching caller sees live progress. Phase is
+            # "gathering" while tools/web run, "synthesizing" once the model is producing the
+            # structured result. Counters are cumulative across the session.
+            tool_calls_total += len(server_uses) + len(tool_uses)
+            gathering = server_paused or server_uses or (tool_uses and submit_block is None)
+            await self._beat(
+                progress,
+                phase="gathering" if gathering else "synthesizing",
+                iteration=attempt + 1,
+                max_iters=max_iters,
+                tool_calls=tool_calls_total,
+                tokens_spent=budget.spent if budget is not None else 0,
+            )
+
             if server_paused:
                 # A long server-tool turn was checkpointed mid-flight. Re-send the conversation
                 # unchanged (no user message) and the server resumes where it left off — this
                 # must not fall through to the "no tool_uses -> nudge" branch below.
                 continue
 
-            tool_uses = [b for b in resp.content if getattr(b, "type", None) == "tool_use"]
             if not tool_uses:
-                # The model answered without calling a tool; nudge it to submit and retry.
-                messages.append(
-                    {"role": "user", "content": f"Call {submit['name']} with the final result."}
-                )
+                # The model answered without calling a tool; nudge it to submit and retry. A
+                # pending redirect rides along on this user turn (and may reopen the work).
+                nudge = f"Call {submit['name']} with the final result."
+                if pending_steer:
+                    nudge = _STEER_PREFIX + " ".join(pending_steer) + "\n\n" + nudge
+                    pending_steer.clear()
+                messages.append({"role": "user", "content": nudge})
                 continue
 
-            submit_block = next((b for b in tool_uses if b.name == submit["name"]), None)
             if submit_block is not None:
                 try:
                     out = spec.output_model.model_validate(submit_block.input)
@@ -315,11 +360,37 @@ class Researcher:
                         "content": json.dumps(result, default=str),
                     }
                 )
+            # Deliver any pending redirect as a text block alongside the tool results (a valid
+            # mixed user turn) — this is where a steer actually reaches the running session.
+            if pending_steer:
+                tool_results.append({"type": "text", "text": _STEER_PREFIX + " ".join(pending_steer)})
+                pending_steer.clear()
             messages.append({"role": "user", "content": tool_results})
 
         raise RuntimeError(
             f"researcher task {task_name!r} did not submit within {max_iters} iterations"
         )
+
+    @staticmethod
+    async def _beat(
+        progress: Callable[[dict[str, Any]], Awaitable[None]] | None, **snapshot: Any
+    ) -> None:
+        """Fire one heartbeat. Never lets a failing callback break the agent loop."""
+        if progress is None:
+            return
+        try:
+            await progress(snapshot)
+        except Exception:  # noqa: BLE001 — visibility must never crash the work it observes
+            logger.warning("progress callback failed", exc_info=True)
+
+    @staticmethod
+    async def _steer_text(steer: Callable[[], Awaitable[str | None]]) -> str | None:
+        """Poll the steer callback for a pending redirect. A failing callback never breaks the loop."""
+        try:
+            return await steer()
+        except Exception:  # noqa: BLE001 — a redirect hiccup must not crash the research
+            logger.warning("steer callback failed", exc_info=True)
+            return None
 
     async def _run_tool(self, allowlist: dict, name: str, args: dict[str, Any]) -> Any:
         spec = allowlist.get(name)
@@ -327,9 +398,20 @@ class Researcher:
             return {"error": f"tool {name!r} is not permitted for this task"}
         try:
             return await invoke_tool(spec, args)
+        except ProviderError as exc:
+            # An external dependency failed — already retried+backed-off inside the provider. Tell
+            # the model NOT to retry (a transient stall won't clear by re-calling, and each retry
+            # is a billed turn): proceed without this tool. This is what stops the rate-limit
+            # token bleed — the agent moves on instead of hammering a wall.
+            note = (
+                f"{exc.provider} is temporarily unavailable — proceed without this tool; do not retry it."
+                if exc.transient
+                else f"{exc.provider} rejected the request — do not retry it."
+            )
+            return {"error": f"{type(exc).__name__}: {exc}", "retryable": False, "note": note}
         except Exception as exc:
-            # Self-correction: surface the failure (bad args, missing row, provider error) as a
-            # tool result so the model can adjust, instead of crashing the whole task.
+            # Internal failure (bad args, missing row): surface it so the model can self-correct
+            # its next call, instead of crashing the whole task.
             return {"error": f"{type(exc).__name__}: {exc}"}
 
 

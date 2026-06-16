@@ -122,6 +122,7 @@ async def close_research(
         return None
     row.status = StateStatus.closed
     row.current_task = None
+    row.progress = None  # live heartbeat is meaningless once closed
     row.closed_at = datetime.now(timezone.utc)
     if row.findings:
         embedded = await embeddings_provider.embed_query(row.findings)

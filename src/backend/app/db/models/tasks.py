@@ -37,6 +37,9 @@ class Task(Base, TimestampMixin):
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Where a failure started: "external" (a provider/dependency error) vs "internal" (our bug).
+    # Null on success. Lets the UI and operators tell an upstream outage from a code fault.
+    error_kind: Mapped[str | None] = mapped_column(String(16), nullable=True)
     params: Mapped[TaskParams | None] = mapped_column(PydanticJSONB(TaskParams), nullable=True)
     result_summary: Mapped[TaskResult | None] = mapped_column(PydanticJSONB(TaskResult), nullable=True)
     tokens_used: Mapped[int | None] = mapped_column(Integer, nullable=True)
