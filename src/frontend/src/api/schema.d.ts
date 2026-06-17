@@ -456,10 +456,13 @@ export interface paths {
         put?: never;
         /**
          * Redirect Session
-         * @description Steer an open session: update its topic and/or current task.
+         * @description Steer an open session toward a new direction *without restarting it or losing its topic*.
          *
-         *     The next resume reconstructs context from the state row, so the redirect takes effect at the
-         *     next wakeup. Direct ORM update — the tools-only rule constrains the AI, not the API.
+         *     The steer is dropped into the in-process redirect queue, which the running agent loop polls
+         *     each turn and injects as a mid-session user instruction — so the live research actually
+         *     changes course. The original ``topic`` is preserved (the session's identity); the steer is
+         *     reflected in ``current_task`` for the UI. Direct ORM update — the tools-only rule constrains
+         *     the AI, not the API.
          */
         post: operations["redirect_session_research__state_id__redirect_post"];
         delete?: never;
@@ -915,6 +918,16 @@ export interface components {
              * @default 0
              */
             tokens_spent: number;
+            /**
+             * Input Tokens
+             * @default 0
+             */
+            input_tokens: number;
+            /**
+             * Output Tokens
+             * @default 0
+             */
+            output_tokens: number;
             /** Updated At */
             updated_at?: string | null;
         };
@@ -1140,6 +1153,7 @@ export interface components {
             error_kind?: string | null;
             /** Tokens Used */
             tokens_used: number | null;
+            token_usage?: components["schemas"]["TokenUsageOut"] | null;
             /** State Id */
             state_id: number | null;
             /** Initiated By */
@@ -1148,6 +1162,37 @@ export interface components {
             message?: string | null;
             /** Counts */
             counts?: {
+                [key: string]: number;
+            };
+        };
+        /**
+         * TokenUsageOut
+         * @description Raw token spend of a task, split by component — wire mirror of the ``TokenUsage`` payload.
+         *     ``input``/``output`` are the headline measurements; cache + web_tool_uses give the full picture.
+         */
+        TokenUsageOut: {
+            /**
+             * Input
+             * @default 0
+             */
+            input: number;
+            /**
+             * Output
+             * @default 0
+             */
+            output: number;
+            /**
+             * Cache Write
+             * @default 0
+             */
+            cache_write: number;
+            /**
+             * Cache Read
+             * @default 0
+             */
+            cache_read: number;
+            /** Web Tool Uses */
+            web_tool_uses?: {
                 [key: string]: number;
             };
         };

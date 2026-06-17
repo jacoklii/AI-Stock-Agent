@@ -23,3 +23,4 @@ export type ResearchSessionOut = S["ResearchSessionOut"];
 export type ResearchSessionDetail = S["ResearchSessionDetail"];
 export type ProgressOut = S["ProgressOut"];
 export type TaskOut = S["TaskOut"];
+export type TokenUsageOut = S["TokenUsageOut"];

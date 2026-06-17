@@ -87,18 +87,19 @@ def _needs_grounding(out: BaseModel) -> bool:
     return sources is not None or source_urls is not None
 
 
-def _usage_tokens(resp: Any) -> int:
-    """Effective cost-weighted tokens for one call: cache writes cost 1.25x a plain input token,
-    cache reads 0.1x. This is what ``Budget`` accumulates and what lands in ``tasks.tokens_used``
-    — uncached calls reduce to input+output, so pre-caching rows stay comparable."""
+def _usage_components(resp: Any) -> tuple[int, int, int, int]:
+    """The raw token components of one call: (input, output, cache_write, cache_read). ``Budget``
+    keeps these split (so a session can report input vs output, each on its own scale) and derives
+    the blended cost-weighted figure that lands in ``tasks.tokens_used``. Returns zeros when the
+    response carries no usage (e.g. a paused server turn)."""
     usage = getattr(resp, "usage", None)
     if usage is None:
-        return 0
+        return 0, 0, 0, 0
     inp = getattr(usage, "input_tokens", 0) or 0
     out = getattr(usage, "output_tokens", 0) or 0
     cache_write = getattr(usage, "cache_creation_input_tokens", 0) or 0
     cache_read = getattr(usage, "cache_read_input_tokens", 0) or 0
-    return round(inp + out + 1.25 * cache_write + 0.1 * cache_read)
+    return inp, out, cache_write, cache_read
 
 
 @dataclass(frozen=True)
@@ -272,7 +273,7 @@ class Researcher:
                 container=container_id,
             )
             if budget is not None:
-                budget.add(_usage_tokens(resp))
+                budget.add_usage(*_usage_components(resp))
             messages.append({"role": "assistant", "content": resp.content})
             container_id = getattr(getattr(resp, "container", None), "id", None) or container_id
 
@@ -281,6 +282,9 @@ class Researcher:
             ]
             if server_uses:
                 logger.info("server tools ran for %s: %s", task_name, server_uses)
+                if budget is not None:
+                    for name in server_uses:
+                        budget.note_web(name)
             tool_uses = [b for b in resp.content if getattr(b, "type", None) == "tool_use"]
             submit_block = next((b for b in tool_uses if b.name == submit["name"]), None)
             server_paused = getattr(resp, "stop_reason", None) == "pause_turn"
@@ -297,6 +301,8 @@ class Researcher:
                 max_iters=max_iters,
                 tool_calls=tool_calls_total,
                 tokens_spent=budget.spent if budget is not None else 0,
+                input_tokens=budget.input if budget is not None else 0,
+                output_tokens=budget.output if budget is not None else 0,
             )
 
             if server_paused:

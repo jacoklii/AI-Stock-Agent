@@ -27,6 +27,7 @@ from app.api.schemas import (
     FollowupResponse,
     ProgressOut,
     RelatedSessionOut,
+    TokenUsageOut,
     ResearchCloseRequest,
     ResearchCloseResponse,
     ResearchOpenRequest,
@@ -87,6 +88,7 @@ def _task_out(row: Task) -> TaskOut:
         error_message=row.error_message,
         error_kind=row.error_kind,
         tokens_used=row.tokens_used,
+        token_usage=TokenUsageOut(**row.token_usage.model_dump()) if row.token_usage else None,
         state_id=row.state_id,
         # initiated_by rides in the task's params (extra-allowed) for research tasks only.
         initiated_by=getattr(row.params, "initiated_by", None) if row.params else None,

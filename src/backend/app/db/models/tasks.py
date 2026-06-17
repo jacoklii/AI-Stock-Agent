@@ -19,7 +19,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, PydanticJSONB, TimestampMixin, intpk
 from app.db.enums import TaskStatus, task_status_enum
-from app.db.payloads import TaskParams, TaskResult
+from app.db.payloads import TaskParams, TaskResult, TokenUsage
 
 
 class Task(Base, TimestampMixin):
@@ -42,4 +42,7 @@ class Task(Base, TimestampMixin):
     error_kind: Mapped[str | None] = mapped_column(String(16), nullable=True)
     params: Mapped[TaskParams | None] = mapped_column(PydanticJSONB(TaskParams), nullable=True)
     result_summary: Mapped[TaskResult | None] = mapped_column(PydanticJSONB(TaskResult), nullable=True)
+    # Blended cost-weighted spend (feeds the budget); the raw input/output/cache breakdown + web
+    # tool uses live alongside it in ``token_usage`` for measurement.
     tokens_used: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    token_usage: Mapped[TokenUsage | None] = mapped_column(PydanticJSONB(TokenUsage), nullable=True)

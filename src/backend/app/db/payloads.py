@@ -126,7 +126,23 @@ class StateProgress(BaseModel):
     tool_calls: int = 0  # cumulative client + server tool uses this session
     sources: int = 0  # distinct sources cited so far
     tokens_spent: int = 0  # effective (cost-weighted) tokens spent so far
+    input_tokens: int = 0  # raw input tokens so far (incl. cached input)
+    output_tokens: int = 0  # raw output tokens so far
     updated_at: datetime | None = None
+
+
+class TokenUsage(BaseModel):
+    """The token spend of a research session, broken out by component. ``input``/``output`` are the
+    raw counts the user reads (each on its own scale); ``cache_write``/``cache_read`` are the
+    prompt-cache portions of input that the blended ``tasks.tokens_used`` cost figure weights at
+    1.25x/0.1x. ``web_tool_uses`` counts the server-side web_search/web_fetch calls, which bill
+    per-use on the Anthropic account *outside* the token figures — the otherwise-invisible cost."""
+
+    input: int = 0
+    output: int = 0
+    cache_write: int = 0
+    cache_read: int = 0
+    web_tool_uses: dict[str, int] = Field(default_factory=dict)
 
 
 # --- Tasks --------------------------------------------------------------------

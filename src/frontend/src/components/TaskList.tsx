@@ -1,6 +1,6 @@
 import { OriginBadge } from "./OriginBadge";
 import { StatusPill } from "./StatusPill";
-import { fmtDateTime, fmtTokens, timeAgo } from "../lib/format";
+import { fmtDateTime, fmtTokens, fmtWebToolUses, timeAgo } from "../lib/format";
 import type { TaskOut } from "../api/types";
 
 /** Where a failure originated: "external" (an upstream provider/dependency outage) reads
@@ -23,6 +23,39 @@ function ErrorKindBadge({ kind }: { kind?: string | null }) {
     >
       {external ? "upstream" : "internal"}
     </span>
+  );
+}
+
+/** Per-task token spend, right-aligned. Input and output are shown on their own scales (never summed —
+ *  input volume dwarfs output, output costs more per token), with web-tool uses when present. The blended
+ *  cost-weighted `tokens_used` stays as a muted secondary "… tok" hint beneath. When `usage` is null we
+ *  fall back to just the blended figure, exactly as before. */
+function TokenBreakdown({
+  usage,
+  blended,
+}: {
+  usage?: TaskOut["token_usage"];
+  blended?: number | null;
+}) {
+  const blendedStr = blended != null ? `${fmtTokens(blended)} tok` : "";
+  if (!usage) {
+    return (
+      <span className="shrink-0 text-xs tabular-nums text-neutral-500">{blendedStr}</span>
+    );
+  }
+  const parts = [`${fmtTokens(usage.input)} in`, `${fmtTokens(usage.output)} out`, ...fmtWebToolUses(usage.web_tool_uses)];
+  return (
+    <div className="shrink-0 text-right">
+      <div className="text-xs tabular-nums text-neutral-700">{parts.join(" · ")}</div>
+      {blendedStr ? (
+        <div
+          className="text-[11px] tabular-nums text-neutral-400"
+          title="Blended cost-weighted token spend"
+        >
+          {blendedStr}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -57,9 +90,7 @@ export function TaskList({ tasks, empty = "Nothing here." }: { tasks: TaskOut[];
               {t.error_message ? ` · ${t.error_message}` : ""}
             </div>
           </div>
-          <span className="shrink-0 text-xs tabular-nums text-neutral-500">
-            {t.tokens_used != null ? `${fmtTokens(t.tokens_used)} tok` : ""}
-          </span>
+          <TokenBreakdown usage={t.token_usage} blended={t.tokens_used} />
         </li>
         );
       })}

@@ -157,16 +157,30 @@ async def test_paused_server_turn_defers_force_and_carries_container() -> None:
     assert llm.calls[1]["tool_choice"] == {"type": "auto"}  # force deferred past the pause
 
 
-def test_usage_tokens_are_cost_weighted() -> None:
-    """Effective tokens: input + output + 1.25x cache writes + 0.1x cache reads."""
+def test_usage_components_split_and_blend() -> None:
+    """The agent extracts raw components; Budget keeps them split and derives the cost-weighted
+    figure: input + output + 1.25x cache writes + 0.1x cache reads."""
+    from app.agents.budget import Budget
+
     usage = SimpleNamespace(
         input_tokens=100,
         output_tokens=10,
         cache_creation_input_tokens=1000,
         cache_read_input_tokens=10_000,
     )
-    assert agent_mod._usage_tokens(SimpleNamespace(usage=usage)) == 2360
-    # Responses without cache fields (or with them unset) reduce to input+output.
+    assert agent_mod._usage_components(SimpleNamespace(usage=usage)) == (100, 10, 1000, 10_000)
+
+    b = Budget()
+    b.add_usage(*agent_mod._usage_components(SimpleNamespace(usage=usage)))
+    assert (b.input, b.output, b.cache_write, b.cache_read) == (100, 10, 1000, 10_000)
+    assert b.spent == 2360  # 100 + 10 + 1.25*1000 + 0.1*10000
+
+    # Responses without cache fields reduce to input+output; no usage -> all zeros.
     plain = SimpleNamespace(input_tokens=5, output_tokens=2)
-    assert agent_mod._usage_tokens(SimpleNamespace(usage=plain)) == 7
-    assert agent_mod._usage_tokens(SimpleNamespace(usage=None)) == 0
+    assert agent_mod._usage_components(SimpleNamespace(usage=plain)) == (5, 2, 0, 0)
+    assert agent_mod._usage_components(SimpleNamespace(usage=None)) == (0, 0, 0, 0)
+
+    b.note_web("web_search")
+    b.note_web("web_search")
+    b.note_web("web_fetch")
+    assert b.web_tool_uses == {"web_search": 2, "web_fetch": 1}

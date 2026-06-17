@@ -7,6 +7,34 @@ export function fmtTokens(n: number | null | undefined): string {
   return String(n);
 }
 
+/** Humanize a web-tool key into a singular noun phrase for the agent's token breakdown.
+ *  Known providers get friendly labels; anything else is de-snaked (e.g. "foo_bar" → "foo bar"). */
+function webToolLabel(key: string): string {
+  if (key === "web_search") return "web search";
+  if (key === "web_fetch") return "fetch";
+  return key.replace(/_/g, " ");
+}
+
+/** Pluralize a short noun for a count — handles the sibilant "-es" case (search → searches,
+ *  fetch → fetches) so the breakdown doesn't read "searchs"/"fetchs". */
+function pluralize(noun: string, n: number): string {
+  if (n === 1) return noun;
+  if (/(s|x|z|ch|sh)$/.test(noun)) return `${noun}es`;
+  return `${noun}s`;
+}
+
+/** Render web-tool-use counts as compact pluralized phrases, e.g.
+ *  `{ web_search: 3, web_fetch: 8 }` → ["3 web searches", "8 fetches"]. Zero/missing counts drop out. */
+export function fmtWebToolUses(uses: { [name: string]: number } | null | undefined): string[] {
+  if (!uses) return [];
+  const out: string[] = [];
+  for (const [key, n] of Object.entries(uses)) {
+    if (!n || n <= 0) continue;
+    out.push(`${n} ${pluralize(webToolLabel(key), n)}`);
+  }
+  return out;
+}
+
 export function fmtPct(n: number | null | undefined, digits = 2): string {
   if (n == null) return "—";
   const sign = n > 0 ? "+" : "";

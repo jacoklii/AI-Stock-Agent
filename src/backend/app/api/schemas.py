@@ -231,7 +231,20 @@ class ProgressOut(BaseModel):
     tool_calls: int = 0
     sources: int = 0
     tokens_spent: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
     updated_at: datetime | None = None
+
+
+class TokenUsageOut(BaseModel):
+    """Raw token spend of a task, split by component — wire mirror of the ``TokenUsage`` payload.
+    ``input``/``output`` are the headline measurements; cache + web_tool_uses give the full picture."""
+
+    input: int = 0
+    output: int = 0
+    cache_write: int = 0
+    cache_read: int = 0
+    web_tool_uses: dict[str, int] = Field(default_factory=dict)
 
 
 class ResearchSessionOut(BaseModel):
@@ -261,6 +274,8 @@ class TaskOut(BaseModel):
     # Where a failure started: "external" (provider/dependency) vs "internal" (our bug); null on success.
     error_kind: str | None = None
     tokens_used: int | None
+    # Raw input/output/cache + web-tool breakdown behind tokens_used (research tasks); null otherwise.
+    token_usage: TokenUsageOut | None = None
     state_id: int | None
     # For research tasks: "user" or "schedule" (who initiated it); None for tasks with no initiator
     # (ingest, scoring, digests — always the agent's own scheduled work).

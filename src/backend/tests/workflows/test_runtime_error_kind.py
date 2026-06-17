@@ -72,3 +72,24 @@ async def test_plain_exception_is_recorded_as_internal(monkeypatch) -> None:
     assert task.status == TaskStatus.failed
     assert task.error_kind == "internal"
     assert task.error_message == "ValueError: logic bug"
+
+
+async def test_token_usage_breakdown_is_persisted() -> None:
+    """The raw input/output/cache + web breakdown set on the handle lands on ``tasks.token_usage``
+    alongside the blended ``tokens_used`` — on a successful run."""
+    from app.db.payloads import TokenUsage
+
+    store: dict = {}
+    async with runtime.run_task("deep_research", session_factory=_sessionmaker(store)) as handle:
+        handle.tokens = 2360
+        handle.usage = TokenUsage(
+            input=100, output=10, cache_write=1000, cache_read=10_000,
+            web_tool_uses={"web_search": 2},
+        )
+
+    task = store["task"]
+    assert task.status == TaskStatus.succeeded
+    assert task.tokens_used == 2360
+    assert task.token_usage.input == 100
+    assert task.token_usage.output == 10
+    assert task.token_usage.web_tool_uses == {"web_search": 2}

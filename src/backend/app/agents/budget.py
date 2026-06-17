@@ -10,14 +10,14 @@ running unbounded.
 task), it just never forces a stop.
 
 Units are *effective* (cost-weighted) tokens: ``input + output + 1.25*cache_write +
-0.1*cache_read`` (see ``agent._usage_tokens``) — proportional to dollars rather than raw counts.
+0.1*cache_read`` (see ``Budget.add_usage``) — proportional to dollars rather than raw counts.
 An uncached call reduces to input+output, so rows recorded before prompt caching stay comparable.
 Server-side web searches bill per-search on the Anthropic account, outside this budget.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func, select
@@ -29,13 +29,37 @@ from app.db.models.user import UserPreferences
 
 @dataclass
 class Budget:
-    """A running token meter for one research session."""
+    """A running token meter for one research session.
+
+    ``spent`` is the blended, cost-weighted figure that paces the loop against the ceiling. The
+    component fields (``input``/``output``/``cache_write``/``cache_read``) keep the raw breakdown so
+    the session can report what actually went in vs out, and ``web_tool_uses`` counts the
+    per-use-billed server web tools that fall outside the token figures entirely."""
 
     ceiling: int | None = None
     spent: int = 0
+    input: int = 0
+    output: int = 0
+    cache_write: int = 0
+    cache_read: int = 0
+    web_tool_uses: dict[str, int] = field(default_factory=dict)
 
     def add(self, tokens: int) -> None:
         self.spent += tokens
+
+    def add_usage(self, input: int, output: int, cache_write: int, cache_read: int) -> None:
+        """Record one LLM call's usage (components in ``_usage_components`` order): accumulate each
+        raw component and add its blended cost to ``spent``. Cost weighting — cache writes 1.25x an
+        input token, cache reads 0.1x — is the single source of truth for what a token "costs"."""
+        self.input += input
+        self.output += output
+        self.cache_write += cache_write
+        self.cache_read += cache_read
+        self.spent += round(input + output + 1.25 * cache_write + 0.1 * cache_read)
+
+    def note_web(self, name: str) -> None:
+        """Count one server-side web tool use (web_search / web_fetch) — billed per use, off-budget."""
+        self.web_tool_uses[name] = self.web_tool_uses.get(name, 0) + 1
 
     def over(self) -> bool:
         return self.ceiling is not None and self.spent >= self.ceiling

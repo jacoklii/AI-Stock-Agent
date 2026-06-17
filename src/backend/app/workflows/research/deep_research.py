@@ -32,7 +32,7 @@ from app.db.enums import AnalysisType, StateStatus
 from app.db.models.analysis import Analysis
 from app.db.models.news import NewsEvent
 from app.db.models.state import ResearchState
-from app.db.payloads import AnalysisContent, AnalysisSupportingInputs, StateProgress
+from app.db.payloads import AnalysisContent, AnalysisSupportingInputs, StateProgress, TokenUsage
 from app.db.session import SessionLocal, readonly_session
 from app.providers.embeddings import get_embeddings_provider
 from app.providers.errors import ProviderError
@@ -121,6 +121,8 @@ def _heartbeat(state_id: int):
                 tool_calls=snapshot.get("tool_calls", 0),
                 sources=n_sources,
                 tokens_spent=snapshot.get("tokens_spent", 0),
+                input_tokens=snapshot.get("input_tokens", 0),
+                output_tokens=snapshot.get("output_tokens", 0),
                 updated_at=datetime.now(timezone.utc),
             )
             row.last_active_at = datetime.now(timezone.utc)
@@ -251,11 +253,18 @@ async def run(
             )
         finally:
             # Record spend always — effective (cost-weighted) tokens: cache writes at 1.25x,
-            # cache reads at 0.1x (see agent._usage_tokens), so tokens_used tracks real cost.
+            # cache reads at 0.1x (see Budget.add_usage), so tokens_used tracks real cost.
             # Close the session (embedding its findings) on completion or failure — but a
             # *paused* session stays open so the next wakeup resumes it.
             _clear_redirects(state_id)
             task.tokens = budget.spent
+            task.usage = TokenUsage(
+                input=budget.input,
+                output=budget.output,
+                cache_write=budget.cache_write,
+                cache_read=budget.cache_read,
+                web_tool_uses=dict(budget.web_tool_uses),
+            )
             paused = out is not None and out.status == "paused"
             if not paused:
                 async with SessionLocal() as session:

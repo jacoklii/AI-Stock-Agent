@@ -25,7 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.enums import TaskStatus
 from app.db.models.tasks import Task
-from app.db.payloads import TaskParams, TaskResult
+from app.db.payloads import TaskParams, TaskResult, TokenUsage
 from app.db.session import SessionLocal
 from app.providers.errors import ProviderError
 
@@ -45,6 +45,8 @@ class TaskHandle:
     result: TaskResult = field(default_factory=TaskResult)
     # Tokens spent by the work in this task; persisted to ``tasks.tokens_used`` (feeds the budget).
     tokens: int = 0
+    # Optional raw input/output/cache + web-tool breakdown, persisted to ``tasks.token_usage``.
+    usage: TokenUsage | None = None
 
     def count(self, name: str, n: int = 1) -> None:
         self.result.counts[name] = self.result.counts.get(name, 0) + n
@@ -88,6 +90,7 @@ async def run_task(
             # our own (DB, validation, logic). This is what makes "where did it break" answerable.
             task.error_kind = "external" if isinstance(exc, ProviderError) else "internal"
             task.tokens_used = handle.tokens or None  # a failed run still spent tokens
+            task.token_usage = handle.usage
             task.completed_at = _utcnow()
             await session.commit()
             raise
@@ -95,6 +98,7 @@ async def run_task(
             task.status = TaskStatus.succeeded
             task.result_summary = handle.result
             task.tokens_used = handle.tokens or None
+            task.token_usage = handle.usage
             task.completed_at = _utcnow()
             await session.commit()
 

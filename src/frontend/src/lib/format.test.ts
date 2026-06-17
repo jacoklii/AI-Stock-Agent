@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { fmtPct, fmtTokens, timeAgo } from "./format";
+import { fmtPct, fmtTokens, fmtWebToolUses, timeAgo } from "./format";
 import { isStale, isStalled } from "./freshness";
 
 describe("fmtTokens", () => {
@@ -9,6 +9,20 @@ describe("fmtTokens", () => {
     expect(fmtTokens(25_000)).toBe("25.0k");
     expect(fmtTokens(1_200_000)).toBe("1.2M");
     expect(fmtTokens(null)).toBe("—");
+  });
+});
+
+describe("fmtWebToolUses", () => {
+  it("labels and pluralizes known tools, humanizes the rest, drops zeros", () => {
+    expect(fmtWebToolUses({ web_search: 3, web_fetch: 8 })).toEqual([
+      "3 web searches",
+      "8 fetches",
+    ]);
+    expect(fmtWebToolUses({ web_search: 1 })).toEqual(["1 web search"]);
+    expect(fmtWebToolUses({ code_exec: 2 })).toEqual(["2 code execs"]);
+    expect(fmtWebToolUses({ web_search: 0, web_fetch: 5 })).toEqual(["5 fetches"]);
+    expect(fmtWebToolUses(null)).toEqual([]);
+    expect(fmtWebToolUses({})).toEqual([]);
   });
 });
 

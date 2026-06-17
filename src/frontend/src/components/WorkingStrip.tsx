@@ -21,6 +21,12 @@ export function WorkingStrip({ progress, className = "" }: { progress: ProgressO
   if (progress.sources && progress.sources > 0) {
     segs.push(`${progress.sources} source${progress.sources === 1 ? "" : "s"}`);
   }
+  // Input and output shown on their own scales (never summed) — input volume dwarfs output, output
+  // costs more per token. Omitted together when both are 0/missing, per the omit-empty convention.
+  if ((progress.input_tokens && progress.input_tokens > 0) || (progress.output_tokens && progress.output_tokens > 0)) {
+    segs.push(`${fmtTokens(progress.input_tokens)} in`);
+    segs.push(`${fmtTokens(progress.output_tokens)} out`);
+  }
   if (progress.tokens_spent && progress.tokens_spent > 0) {
     segs.push(`${fmtTokens(progress.tokens_spent)} tok`);
   }
