@@ -1,0 +1,91 @@
+/* AI Stock Agent — spacing, radii, borders, shadows, motion
+ * Terminal UIs are dense and squared-off: tight spacing, small radii, hairline borders, and a
+ * soft warm drop-shadow for lift — never a glow. Motion is purposeful — pulses, status rises,
+ * blinks — never decorative bounce. */
+
+:root {
+  /* ---- Spacing scale (4px base) ---- */
+  --space-0: 0;
+  --space-px: 1px;
+  --space-0_5: 0.125rem; /* 2 */
+  --space-1: 0.25rem;    /* 4 */
+  --space-1_5: 0.375rem; /* 6 */
+  --space-2: 0.5rem;     /* 8 */
+  --space-3: 0.75rem;    /* 12 */
+  --space-4: 1rem;       /* 16 */
+  --space-5: 1.25rem;    /* 20 */
+  --space-6: 1.5rem;     /* 24 */
+  --space-8: 2rem;       /* 32 */
+  --space-10: 2.5rem;    /* 40 */
+  --space-12: 3rem;      /* 48 */
+  --space-16: 4rem;      /* 64 */
+
+  /* ---- Radii — squared, instrument-like ---- */
+  --radius-none: 0;
+  --radius-xs: 2px;
+  --radius-sm: 3px;
+  --radius-md: 5px;   /* default control / panel */
+  --radius-lg: 8px;
+  --radius-full: 999px;
+
+  /* ---- Borders ---- */
+  --border-hair: 1px solid var(--border-default);
+  --border-line: 1px solid var(--border-strong);
+
+  /* ---- Shadows & rings (soft, warm — no glow) ---- */
+  --shadow-panel: 0 1px 2px oklch(0.4 0.02 70 / 0.04), 0 2px 6px -1px oklch(0.4 0.02 70 / 0.06);
+  --shadow-raised: 0 2px 6px oklch(0.35 0.02 70 / 0.06), 0 14px 34px -14px oklch(0.35 0.02 70 / 0.16);
+  /* Focus / active ring — a soft tint, never a glow. Names kept for compatibility. */
+  --ring-accent: 0 0 0 3px oklch(0.605 0.090 154 / 0.16);
+  --glow-signal: var(--ring-accent);
+  --glow-amber: 0 0 0 3px oklch(0.700 0.110 70 / 0.18);
+  --glow-red: 0 0 0 3px oklch(0.560 0.140 31 / 0.18);
+  --glow-text-signal: none;
+
+  /* ---- Motion ---- */
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1); /* @kind other */
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1); /* @kind other */
+  --dur-fast: 120ms; /* @kind other */
+  --dur-base: 200ms; /* @kind other */
+  --dur-slow: 360ms; /* @kind other */
+
+  /* ---- Layout ---- */
+  --shell-sidebar: 13rem;
+  --shell-max: 1200px;
+  --shell-gutter: var(--space-6);
+}
+
+/* ---- Shared keyframes ---- */
+/* A calm breathing pulse — opacity only, no glow, no shrink. The agent's quiet "I'm alive". */
+@keyframes asa-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+/* The signature status motion: text rises from below into place, holds, then rises away. */
+@keyframes asa-status-in {
+  from { opacity: 0; transform: translateY(0.7em); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes asa-status-out {
+  from { opacity: 1; transform: translateY(0); }
+  to   { opacity: 0; transform: translateY(-0.7em); }
+}
+/* Typing dots — three marks stepping up the wave in sequence. */
+@keyframes asa-typing {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.3; }
+  30% { transform: translateY(-3px); opacity: 1; }
+}
+@keyframes asa-flash-up { 0% { background: var(--up-bg); } 100% { background: transparent; } }
+@keyframes asa-flash-down { 0% { background: var(--down-bg); } 100% { background: transparent; } }
+@keyframes asa-dash { to { stroke-dashoffset: 0; } }
+/* A gentle rise-in for cards/rows entering the feed. Transform ONLY — never animate opacity
+ * here: some render contexts freeze the timeline at 0%, and a 0%-opacity keyframe would strand
+ * the element invisible. Base opacity stays 1, so a frozen frame still shows content. */
+@keyframes asa-rise-in {
+  from { transform: translateY(8px); }
+  to   { transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; }
+}
