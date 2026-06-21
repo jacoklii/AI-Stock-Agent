@@ -1,0 +1,8 @@
+/* AI Stock Agent — webfonts
+ * Three families for a personal research desk:
+ *   · Space Grotesk — UI, headings, labels (clean, friendly geometric sans)
+ *   · Newsreader    — reading prose: findings, digests, the agent's written notes. This serif is
+ *                     the "personal" signature — like a memo from your own analyst, not a tool.
+ *   · JetBrains Mono — the transparency layer: tokens, tools, timestamps, tickers, telemetry.
+ * Loaded from Google Fonts. Swap to self-hosted .woff2 for production / offline. */
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=JetBrains+Mono:wght@400;500;600;700&display=swap");

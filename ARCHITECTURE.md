@@ -4,7 +4,7 @@
 Create an agentic AI system that's my research partner and analyst. It does the deep research I can't do alone — across industries, supply chains, futures (AI, quantum, aerospace, finance), macro and geopolitics — surfaces what genuinely matters, filters noise, and points me at patterns with data. It never decides for me.
 
 ## Mental Model
-Think of it like a researcher. It researches intensively in bounded sessions, then rests. While it rests from deep research, automation keeps running in the background — ingesting news, filtering noise. The AI is in the automation to summarize findings from tools, and if something material surfaces during that automation, the researcher is back up to run deep research. Otherwise the researcher waits for a schedule or a direct request. The automation never stops; the researcher only works when there's something worth working on.
+Think of it like a researcher. It researches intensively in bounded sessions, then rests after finding what it needs. While it rests from deep research, automation keeps running in the background — ingesting news, filtering noise, updating the user, etc. The AI is in the automation to summarize findings from tools, and if something material surfaces during that automation, the researcher is back up to run deep research. Otherwise the researcher waits for a schedule or a direct request. The automation never stops; the researcher only works when there's something worth working on.
 
 ### AI-Specific
 Repetitive workflows + tasks, signal-filtering and pattern recognition to research macro movement, industries and sectors, and stocks within those industries. 
