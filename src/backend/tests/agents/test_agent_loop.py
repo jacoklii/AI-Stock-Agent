@@ -157,6 +157,39 @@ async def test_paused_server_turn_defers_force_and_carries_container() -> None:
     assert llm.calls[1]["tool_choice"] == {"type": "auto"}  # force deferred past the pause
 
 
+async def test_unresolved_server_tool_use_resumes_instead_of_nudging() -> None:
+    """A completed turn can carry a code_execution server_tool_use with no result block — the
+    code_execution that web_search/web_fetch run internally for dynamic filtering, whose result is
+    consumed server-side. The loop must re-send to resume it, NOT append a user nudge: a user turn
+    after an unresolved server_tool_use is rejected by Anthropic with a 400 ("code_execution tool
+    use ... without a corresponding code_execution_tool_result block")."""
+    dangling = _Resp(
+        _Block("code_execution", {"code": "..."}, id="srv_1", type="server_tool_use"),
+        stop_reason="end_turn",  # not pause_turn — the old code only resumed on pause_turn
+    )
+    llm = _ScriptedLLM(
+        dangling,
+        _Resp(_Block("submit_followup", {"answer": "ok", "sources": [1]})),
+    )
+    out = await agent_mod.Researcher(llm=llm).run_task(TASK_FOLLOWUP, inputs={"query": "q"})
+    assert out.answer == "ok"
+    # The resume request carries the assistant turn unchanged as its last message — no user nudge
+    # was appended after the unresolved server_tool_use.
+    last = llm.calls[1]["messages"][-1]
+    assert last["role"] == "assistant"
+    assert last["content"] is dangling.content
+
+
+def test_has_unresolved_server_tool() -> None:
+    """A server_tool_use with no matching *_tool_result is unresolved; one whose result block is
+    present (by tool_use_id) is not; content with no server tools is never unresolved."""
+    use = _Block("code_execution", {}, id="srv_1", type="server_tool_use")
+    result = SimpleNamespace(type="code_execution_tool_result", tool_use_id="srv_1")
+    assert agent_mod._has_unresolved_server_tool([use]) is True
+    assert agent_mod._has_unresolved_server_tool([use, result]) is False
+    assert agent_mod._has_unresolved_server_tool([_Block("submit", {})]) is False
+
+
 def test_usage_components_split_and_blend() -> None:
     """The agent extracts raw components; Budget keeps them split and derives the cost-weighted
     figure: input + output + 1.25x cache writes + 0.1x cache reads."""

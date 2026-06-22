@@ -1,4 +1,130 @@
+/* Three families: Space Grotesk (UI/labels), Newsreader (the agent's reading prose),
+   JetBrains Mono (numbers/tickers/telemetry — the transparency layer). */
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=JetBrains+Mono:wght@400;500;600&display=swap");
 @import "tailwindcss";
+
+/* ---- Design tokens → Tailwind theme. Brings the design-system palette/type/radii into the
+   utility layer so `bg-panel`, `text-strong`, `border-default`, `font-serif`, `rounded-md`
+   resolve to the warm research-desk values. Source: design-system/tokens/*.css. ---- */
+@theme {
+  --font-sans: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Newsreader", Georgia, "Times New Roman", serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* Paper surfaces + warm ink, mapped to semantic Tailwind color utilities. */
+  --color-app: oklch(0.972 0.007 83);
+  --color-void: oklch(0.955 0.009 82);
+  --color-panel: oklch(0.995 0.003 85);
+  --color-raised: oklch(0.985 0.005 84);
+  --color-hover: oklch(0.955 0.009 82);
+  --color-inset: oklch(0.935 0.010 80);
+  --color-strong: oklch(0.27 0.012 68);
+  --color-body: oklch(0.40 0.012 70);
+  --color-muted: oklch(0.545 0.011 74);
+  --color-dim: oklch(0.665 0.010 78);
+  --color-line: oklch(0.905 0.008 80);
+  --color-line-strong: oklch(0.855 0.011 78);
+  --color-accent: oklch(0.605 0.090 154);
+  --color-accent-strong: oklch(0.520 0.088 155);
+  --color-up: oklch(0.555 0.105 150);
+  --color-down: oklch(0.555 0.135 32);
+  --color-amber: oklch(0.640 0.110 68);
+  --color-link: oklch(0.530 0.095 245);
+  --color-danger: oklch(0.545 0.150 30);
+
+  --radius-xs: 2px;
+  --radius-sm: 3px;
+  --radius-md: 5px;
+  --radius-lg: 8px;
+}
+
+/* ---- Full semantic token set (referenced directly as CSS vars by the desk + panels). ---- */
+:root {
+  --paper-0: oklch(0.995 0.003 85);
+  --paper-50: oklch(0.985 0.005 84);
+  --paper-100: oklch(0.972 0.007 83);
+  --paper-200: oklch(0.955 0.009 82);
+  --paper-300: oklch(0.935 0.010 80);
+  --ink-1: oklch(0.27 0.012 68);
+  --ink-2: oklch(0.40 0.012 70);
+  --ink-3: oklch(0.545 0.011 74);
+  --ink-4: oklch(0.665 0.010 78);
+  --line-1: oklch(0.905 0.008 80);
+  --line-2: oklch(0.855 0.011 78);
+
+  --signal-soft: oklch(0.605 0.090 154 / 0.12);
+  --up-500: oklch(0.555 0.105 150);
+  --up-bg: oklch(0.605 0.090 152 / 0.12);
+  --down-500: oklch(0.555 0.135 32);
+  --down-bg: oklch(0.585 0.130 33 / 0.11);
+  --amber-500: oklch(0.640 0.110 68);
+  --amber-bg: oklch(0.700 0.110 70 / 0.15);
+  --red-500: oklch(0.545 0.150 30);
+  --red-bg: oklch(0.560 0.140 31 / 0.12);
+
+  /* Semantic aliases — reference these, not the ramps above. */
+  --bg-app: var(--paper-100);
+  --bg-void: var(--paper-200);
+  --surface-panel: var(--paper-0);
+  --surface-raised: var(--paper-50);
+  --surface-hover: var(--paper-200);
+  --surface-inset: var(--paper-300);
+  --text-strong: var(--ink-1);
+  --text-body: var(--ink-2);
+  --text-muted: var(--ink-3);
+  --text-dim: var(--ink-4);
+  --border-default: var(--line-1);
+  --border-strong: var(--line-2);
+  --accent: oklch(0.605 0.090 154);
+  --accent-hover: oklch(0.520 0.088 155);
+  --link: oklch(0.530 0.095 245);
+
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-sans: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Newsreader", Georgia, "Times New Roman", serif;
+
+  --radius-sm: 3px;
+  --radius-md: 5px;
+  --dur-fast: 120ms;
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  background: var(--bg-app);
+  color: var(--text-body);
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;
+  -webkit-font-smoothing: antialiased;
+}
+::selection { background: oklch(0.605 0.090 154 / 0.18); color: var(--ink-1); }
+
+/* Caps label — panel headers and field labels. */
+.terminal-label {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--text-muted);
+}
+/* The agent's reading voice — findings, digests, written notes. */
+.asa-prose { font-family: var(--font-serif); font-size: 0.9375rem; line-height: 1.65; color: var(--text-body); }
+.asa-prose p { margin: 0 0 0.7em; }
+.asa-prose p:last-child { margin-bottom: 0; }
+/* Tabular numbers everywhere data lives. */
+.tnum { font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; }
+.font-data { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+/* Calm, purposeful motion — opacity-only pulse (no glow), status rise. */
+@keyframes asa-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+.asa-pulse { animation: asa-pulse 1.8s var(--ease-out) infinite; }
+@keyframes asa-status-in { from { opacity: 0; transform: translateY(0.7em); } to { opacity: 1; transform: translateY(0); } }
+@keyframes asa-status-out { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(-0.7em); } }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; }
+}
 
 /* Information-dense defaults; the agent's text artifacts keep their line breaks. */
 .prose-snapshot {

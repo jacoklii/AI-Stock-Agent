@@ -20,6 +20,7 @@ from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, FreshnessMixin, TimestampMixin, embedding_vector, intpk
+from app.db.enums import NewsDomain, news_domain_enum
 
 
 class NewsEvent(Base, TimestampMixin, FreshnessMixin):
@@ -56,6 +57,10 @@ class NewsEvent(Base, TimestampMixin, FreshnessMixin):
     # Haiku classifier score 0–1. Events below the ingest threshold are dropped before
     # this row is written; all stored events cleared the bar.
     significance: Mapped[float] = mapped_column(Float, index=True)
+    # Surveillance domain (geopolitics/macro/industry/market), classified at ingest by the
+    # significance task and falling back to the deterministic keyword router. Nullable so older
+    # rows (pre-backfill) and abstentions degrade to the heuristic in /world. Indexed for the feed.
+    domain: Mapped[NewsDomain | None] = mapped_column(news_domain_enum, index=True, nullable=True)
     summary: Mapped[str] = mapped_column(Text)
 
     embedding: Mapped[list[float] | None] = mapped_column(embedding_vector(), nullable=True)

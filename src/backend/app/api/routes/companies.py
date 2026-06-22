@@ -11,6 +11,7 @@ from app.api.schemas import (
     ArticleOut,
     CompanyDetail,
     CompanyListItem,
+    FinancialOut,
     ProseOut,
     RelatedArticleOut,
     ScoreOut,
@@ -20,7 +21,13 @@ from app.db.enums import CoverageTier
 from app.db.models.companies import Company
 from app.db.models.news import NewsEvent
 from app.tools.analysis import get_latest_prose, get_latest_scores
-from app.tools.research import get_company, get_news_events, screen_stocks, search_similar_by_vector
+from app.tools.research import (
+    get_company,
+    get_financials,
+    get_news_events,
+    screen_stocks,
+    search_similar_by_vector,
+)
 from app.tools.tool_schema import ScreenFilters
 
 router = APIRouter(tags=["companies"])
@@ -85,6 +92,12 @@ async def company_detail(
                 )
             )
 
+    # Stored financial periods (newest first) — facts only; empty until market-data ingest runs.
+    financials = [
+        FinancialOut(**f.model_dump())
+        for f in await get_financials(session, company_id=company_id, limit=8)
+    ]
+
     return CompanyDetail(
         company_id=company.company_id,
         ticker=company.ticker,
@@ -96,6 +109,7 @@ async def company_detail(
         articles=[ArticleOut.model_validate(e.model_dump()) for e in news],
         scores=scores,
         prose=prose,
+        financials=financials,
     )
 
 

@@ -23,9 +23,12 @@ class ArticleSummaryOut(BaseModel):
 
 
 class SignificanceOut(BaseModel):
-    """Significance classification for a news event (0 = irrelevant, 1 = highly significant)."""
+    """Significance classification for a news event (0 = irrelevant, 1 = highly significant), plus
+    the surveillance domain the event belongs to. ``domain`` is optional — the ingest pipeline falls
+    back to a deterministic keyword router when the model abstains (null)."""
 
     significance: float = Field(ge=0.0, le=1.0)
+    domain: Literal["geopolitics", "macro", "industry", "market"] | None = None
 
 
 class SnapshotOut(BaseModel):
@@ -49,11 +52,16 @@ class CompanyProseOut(BaseModel):
 
 
 class FollowupOut(BaseModel):
-    """A scoped follow-up answer, with the source event IDs and/or web URLs it drew on."""
+    """A scoped follow-up answer, with the source event IDs and/or web URLs it drew on. When the
+    question really needs a bounded, multi-step research session, the agent flags ``suggest_deeper``
+    and proposes ``deeper_topic`` — the interface offers a one-click escalation (human stays in the
+    loop; nothing is auto-opened)."""
 
     answer: str
     sources: list[int] = Field(default_factory=list)
     source_urls: list[str] = Field(default_factory=list)
+    suggest_deeper: bool = False
+    deeper_topic: str | None = None
 
 
 class DeepResearchOut(BaseModel):

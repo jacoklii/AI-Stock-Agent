@@ -87,6 +87,30 @@ def _needs_grounding(out: BaseModel) -> bool:
     return sources is not None or source_urls is not None
 
 
+def _has_unresolved_server_tool(content: list[Any]) -> bool:
+    """True when an assistant turn carries a ``server_tool_use`` block with no matching result
+    block in the same content. This happens on a ``pause_turn``, but also when a server tool runs
+    to completion yet its result is not surfaced as a client-visible block — notably the
+    ``code_execution`` that ``web_search``/``web_fetch`` run *internally* for dynamic filtering
+    (the result is consumed server-side, so only the ``server_tool_use`` lands in ``content``).
+
+    Such a turn must be re-sent so the server resumes; appending a user/tool_result turn after it
+    orphans the ``server_tool_use`` and the next request is rejected with a 400 ("``code_execution``
+    tool use ... without a corresponding ``code_execution_tool_result`` block")."""
+    server_ids = {
+        getattr(b, "id", None) for b in content if getattr(b, "type", None) == "server_tool_use"
+    }
+    server_ids.discard(None)
+    if not server_ids:
+        return False
+    resolved = {
+        getattr(b, "tool_use_id", None)
+        for b in content
+        if str(getattr(b, "type", "")).endswith("_tool_result")
+    }
+    return bool(server_ids - resolved)
+
+
 def _usage_components(resp: Any) -> tuple[int, int, int, int]:
     """The raw token components of one call: (input, output, cache_write, cache_read). ``Budget``
     keeps these split (so a session can report input vs output, each on its own scale) and derives
@@ -246,7 +270,9 @@ class Researcher:
         # Server-side web tools execute in a server container; once a response carries its id,
         # every later call in this task must send it back or a paused turn cannot resume.
         container_id: str | None = None
-        server_paused = False
+        # A server-tool turn that still needs to resume (paused, or completed with an unresolved
+        # server_tool_use). While set, the loop re-sends instead of injecting a user turn.
+        server_continuing = False
 
         for attempt in range(max_iters):
             # Poll for a mid-session redirect; buffer it for the next user turn.
@@ -256,9 +282,9 @@ class Researcher:
                     pending_steer.append(steer_text)
             # Force the submit tool on the last attempt, or once the budget ceiling is hit, so we
             # always end with structured output and never overspend. Never force while a server
-            # turn is paused — the API rejects a tool_choice over pending server tool uses; the
+            # turn is resuming — the API rejects a tool_choice over pending server tool uses; the
             # force defers to the next iteration instead.
-            force_submit = not server_paused and (
+            force_submit = not server_continuing and (
                 attempt == max_iters - 1 or (budget is not None and budget.over())
             )
             resp = await self._llm.create(
@@ -287,13 +313,18 @@ class Researcher:
                         budget.note_web(name)
             tool_uses = [b for b in resp.content if getattr(b, "type", None) == "tool_use"]
             submit_block = next((b for b in tool_uses if b.name == submit["name"]), None)
-            server_paused = getattr(resp, "stop_reason", None) == "pause_turn"
+            # The turn must resume (rather than us appending a user turn) when it is explicitly
+            # paused, OR when it left an unresolved server_tool_use — e.g. the code_execution that
+            # web_search/web_fetch run internally, whose result is consumed server-side.
+            server_continuing = getattr(resp, "stop_reason", None) == "pause_turn" or (
+                _has_unresolved_server_tool(resp.content)
+            )
 
             # Heartbeat: one beat per iteration so a watching caller sees live progress. Phase is
             # "gathering" while tools/web run, "synthesizing" once the model is producing the
             # structured result. Counters are cumulative across the session.
             tool_calls_total += len(server_uses) + len(tool_uses)
-            gathering = server_paused or server_uses or (tool_uses and submit_block is None)
+            gathering = server_continuing or server_uses or (tool_uses and submit_block is None)
             await self._beat(
                 progress,
                 phase="gathering" if gathering else "synthesizing",
@@ -305,10 +336,12 @@ class Researcher:
                 output_tokens=budget.output if budget is not None else 0,
             )
 
-            if server_paused:
-                # A long server-tool turn was checkpointed mid-flight. Re-send the conversation
-                # unchanged (no user message) and the server resumes where it left off — this
-                # must not fall through to the "no tool_uses -> nudge" branch below.
+            if server_continuing:
+                # A server-tool turn is still in flight (checkpointed mid-flight, or carrying an
+                # unresolved server_tool_use such as web search's internal code_execution).
+                # Re-send the conversation unchanged (no user message) so the server resumes where
+                # it left off — this must not fall through to the "no tool_uses -> nudge" branch
+                # below, which would orphan the server_tool_use and make the next request a 400.
                 continue
 
             if not tool_uses:

@@ -25,13 +25,17 @@ from app.config import (
     DEDUP_SIMILARITY_THRESHOLD,
     DEEP_RESEARCH_WAKEUP_SIGNIFICANCE,
     ROUTE_SIMILARITY_THRESHOLD,
+    WORLD_GEOPOLITICS_KEYWORDS,
+    WORLD_MACRO_KEYWORDS,
 )
-from app.db.enums import CoverageTier
+from app.db.enums import CoverageTier, NewsDomain
 from app.db.models.companies import Industry
 from app.db.models.news import NewsEvent
+from app.utils import classify_domain
 from app.db.session import SessionLocal, readonly_session
 from app.providers.embeddings import get_embeddings_provider
 from app.providers.news import get_news_provider
+from app.providers.web_news import get_web_news_provider
 from app.tools.registry import TASK_ARTICLE_SUMMARY, TASK_SIGNIFICANCE
 from app.tools.research import ScreenFilters, screen_stocks
 from app.workflows.concurrency import workflow_slot
@@ -78,6 +82,9 @@ async def _fetch_events() -> list[RawEvent]:
     items = await provider.fetch_general_news(since=since)
     if watchlist:
         items += await provider.fetch_events(watchlist, since=since)
+    # Second breadth source: generic web/RSS feeds. Same RawNewsItem shape; cross-source duplicates
+    # collapse downstream via URL + semantic dedup, so the two sources just compose.
+    items += await get_web_news_provider().fetch(since=since)
 
     events: list[RawEvent] = []
     for item in items:
@@ -215,12 +222,12 @@ async def _summarize(event: RawEvent):
     return await get_researcher().run_task(TASK_ARTICLE_SUMMARY, inputs={"event": event})
 
 
-async def _classify_significance(event: RawEvent, summary: str) -> float:
-    """Researcher classifies significance (0-1) from the event and its summary."""
-    out = await get_researcher().run_task(
+async def _classify_significance(event: RawEvent, summary: str):
+    """Researcher classifies significance (0-1) and surveillance domain from the event + summary.
+    Returns the full ``SignificanceOut`` (``.significance`` + optional ``.domain``)."""
+    return await get_researcher().run_task(
         TASK_SIGNIFICANCE, inputs={"event": event, "summary": summary}
     )
-    return out.significance
 
 
 async def _enqueue_rescore(company_ids: set[int]) -> None:
@@ -275,9 +282,10 @@ async def run() -> None:
             wake = False
             async with SessionLocal() as session:
                 for event in events:
-                    # 2. Summarize + classify. — researcher
+                    # 2. Summarize + classify (significance + domain). — researcher
                     summary_out = await _summarize(event)
-                    significance = await _classify_significance(event, summary_out.summary)
+                    sig_out = await _classify_significance(event, summary_out.summary)
+                    significance = sig_out.significance
 
                     # 3. Drop below-threshold events (never stored) — and never embed sub-floor
                     #    noise, protecting the Voyage budget.
@@ -310,6 +318,16 @@ async def run() -> None:
                         if industry_id is not None:
                             task.count("routed")
 
+                    # 4d. Surveillance domain: the classifier's call, falling back to the
+                    #     deterministic keyword router when it abstained.
+                    domain_key = sig_out.domain or classify_domain(
+                        f"{event.headline} {summary_out.summary}",
+                        has_company=event.company_id is not None,
+                        has_industry=industry_id is not None,
+                        geopolitics_keywords=WORLD_GEOPOLITICS_KEYWORDS,
+                        macro_keywords=WORLD_MACRO_KEYWORDS,
+                    )
+
                     # 5. Write the event row (summary canonical, embedding carries its model). — write
                     session.add(
                         NewsEvent(
@@ -321,17 +339,22 @@ async def run() -> None:
                             headline=event.headline,
                             tickers=event.tickers,
                             significance=significance,
+                            domain=NewsDomain(domain_key),
                             summary=summary_out.summary,
                             embedding=embedded.vector,
                             embedding_model=embedded.model,
                         )
                     )
+                    # Commit per event so a long sweep is restart-safe: an interrupted run keeps
+                    # every event it had already processed (the URL-unique constraint keeps a
+                    # re-run idempotent), and /world populates progressively instead of all-or-
+                    # nothing at the end. The accepted-vector dedup pool is in-memory, unaffected.
+                    await session.commit()
                     if event.company_id is not None:
                         touched.add(event.company_id)
                     if significance >= DEEP_RESEARCH_WAKEUP_SIGNIFICANCE:
                         wake = True
                     task.count("written")
-                await session.commit()
 
             # 6. Enqueue re-scoring for affected companies. — event trigger
             if touched:

@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 # Canonical workflow identifiers (the workflows themselves are deferred).
 WF_DAILY_DIGEST = "daily_research_digest"
 WF_MARKET_PULSE = "market_pulse"
+WF_MARKET_DATA_INGEST = "market_data_ingest"
 WF_NEWS_INGEST = "news_ingest"
 WF_SECTOR_RESEARCH = "sector_research"
 WF_RESCORE = "company_rescore"
@@ -122,6 +123,13 @@ register_trigger(Trigger(
     workflow=WF_NEWS_INGEST,
     description="Continuous breadth: pull + classify news around the clock; URL dedup keeps re-fetch cheap.",
     cron="0 * * * *",
+))
+register_trigger(Trigger(
+    name="market_data_daily",
+    kind=TriggerKind.scheduled,
+    workflow=WF_MARKET_DATA_INGEST,
+    description="Daily: refresh stored financials + daily prices for watchlist + critical names (the quantitative surface).",
+    cron="30 22 * * 1-5",
 ))
 register_trigger(Trigger(
     name="significance_recheck_daily",

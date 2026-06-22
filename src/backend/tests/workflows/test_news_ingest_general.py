@@ -55,9 +55,14 @@ def _patch(monkeypatch, *, candidates, provider) -> None:
     async def _screen(session, *, filters):
         return candidates
 
+    class _NoWeb:
+        async def fetch(self, *, since=None):
+            return []
+
     monkeypatch.setattr(news_ingest, "readonly_session", _ro)
     monkeypatch.setattr(news_ingest, "screen_stocks", _screen)
     monkeypatch.setattr(news_ingest, "get_news_provider", lambda: provider)
+    monkeypatch.setattr(news_ingest, "get_web_news_provider", lambda: _NoWeb())
 
 
 async def test_general_feed_flows_without_a_watchlist(monkeypatch) -> None:

@@ -21,10 +21,12 @@ from app.api.routes import (
     companies,
     home,
     inbox,
+    ops,
     preferences,
     pulse,
     research,
     sectors,
+    world,
 )
 from app.config import get_settings
 from app.db.session import engine
@@ -131,7 +133,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-for module in (home, pulse, companies, sectors, inbox, preferences, research, chat, agent):
+for module in (home, pulse, companies, sectors, inbox, preferences, research, chat, agent, world, ops):
     app.include_router(module.router)
 
 

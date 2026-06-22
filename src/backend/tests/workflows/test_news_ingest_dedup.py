@@ -80,7 +80,7 @@ def _patch_seams(monkeypatch, *, fetched, known, significance) -> dict:
         return SimpleNamespace(summary="s")
 
     async def _classify(event, summary):
-        return significance
+        return SimpleNamespace(significance=significance, domain=None)
 
     async def _rescore(company_ids):
         recorded["rescored"].append(company_ids)

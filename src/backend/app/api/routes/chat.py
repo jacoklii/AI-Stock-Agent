@@ -83,4 +83,10 @@ async def post_message(
     )
     session.add(assistant_row)
     await session.commit()
-    return [_message_out(user_row), _message_out(assistant_row)]
+
+    # The escalation hint is live-only — it rides the fresh reply so the UI can offer "dig deeper",
+    # but isn't persisted (a reloaded thread shows the answer, not a stale nudge).
+    assistant_out = _message_out(assistant_row)
+    assistant_out.suggest_deeper = out.suggest_deeper
+    assistant_out.deeper_topic = out.deeper_topic
+    return [_message_out(user_row), assistant_out]

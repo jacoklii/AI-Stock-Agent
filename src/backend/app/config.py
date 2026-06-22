@@ -131,6 +131,33 @@ DEEP_RESEARCH_WAKEUP_SIGNIFICANCE = 0.7
 # the next autonomous wakeup, so one never-finishing thread can't monopolize resume-first.
 DEEP_RESEARCH_MAX_SESSION_AGE_DAYS = 7
 
+# --- World surveillance feed (GET /world) -------------------------------------
+# Significance is shown to the user as TIME, never a number (PROJECT.md §8). An item is "Now"
+# (act on the tape today) when it is both recent and material; otherwise "Building" (expected to
+# matter ahead). The raw score only orders items within a horizon and is never returned for display.
+WORLD_NOW_WINDOW_HOURS = 48
+WORLD_NOW_MIN_SIGNIFICANCE = 0.6
+# How many recent significant events the feed scans before grouping into domains.
+WORLD_FEED_LIMIT = 120
+# How many ranked movements the Signals band carries (split across Now / Building).
+WORLD_SIGNALS_LIMIT = 12
+
+# Thin keyword classifier that routes a stored event into one of the four surveillance domains,
+# in priority order: geopolitics (origin of moves) and macro win on keyword; otherwise a
+# company-named event is market, an industry-tagged event is industry, and an orphan global event
+# defaults to geopolitics. This is the architecture-first placeholder for a real `domain` column.
+WORLD_GEOPOLITICS_KEYWORDS = (
+    "war", "conflict", "sanction", "tariff", "trade dispute", "election", "strait",
+    "military", "missile", "invasion", "geopolit", "embargo", "border", "coup", "ceasefire",
+    "opec", "supply chain", "blockade", "treaty", "diplomat",
+)
+WORLD_MACRO_KEYWORDS = (
+    "inflation", "cpi", "ppi", "interest rate", "rate cut", "rate hike", "federal reserve",
+    "the fed", "central bank", "ecb", "employment", "jobs report", "payroll", "unemployment",
+    "gdp", "yield", "bond", "treasury", "currency", "dollar", "commodity", "recession",
+    "monetary", "fiscal",
+)
+
 
 # --- Semantic dedup + routing (news ingest) -----------------------------------
 # Near-duplicate gate: the same story from many outlets becomes one event. After the summary is
@@ -145,6 +172,19 @@ DEDUP_LOOKBACK_DAYS = 3
 # by cosine over the industry embeddings. Below this similarity it stays unrouted (industry_id=None)
 # rather than forced into a poor fit.
 ROUTE_SIMILARITY_THRESHOLD = 0.45
+
+
+# --- Web-news crawling (second breadth source) --------------------------------
+# Reputable, free, keyless RSS/Atom feeds the web-news provider crawls alongside Finnhub. These are
+# general market + macro breadth (most entries carry no ticker, so they flow as macro/general and get
+# an industry home by embedding routing). Edit freely — the ingest dedup handles cross-source overlap.
+WEB_NEWS_FEEDS: tuple[str, ...] = (
+    "https://finance.yahoo.com/news/rssindex",
+    "http://feeds.marketwatch.com/marketwatch/topstories/",
+    "https://www.federalreserve.gov/feeds/press_all.xml",
+)
+# Cap entries taken from any single feed per run — keeps one noisy feed from dominating the batch.
+WEB_NEWS_MAX_PER_FEED = 40
 
 
 # --- Fixed constants ----------------------------------------------------------
@@ -203,12 +243,14 @@ DEFAULT_INDUSTRIES: list[dict[str, str]] = [
     {"key": "telecom-media", "name": "Telecom & Media", "description": "Carriers, streaming, advertising, and social platforms."},
 ]
 
-# Popular mega-caps as the starting research surface — ``discovered`` tier (lightweight
-# tracking only; the deliberate cost boundary keeps deep scoring on the watchlist).
+# Popular mega-caps as the starting research surface. Most start ``discovered`` (lightweight
+# tracking only; the deliberate cost boundary keeps deep scoring on the watchlist). A few ship on
+# the ``watchlist`` so a fresh install has working depth out of the box — company-news depth,
+# scoring, and financials flow immediately; the user re-tiers any of them in Settings afterwards.
 DEFAULT_COMPANIES: list[dict[str, str]] = [
-    {"ticker": "AAPL", "name": "Apple Inc.", "sector": "Information Technology", "industry": "consumer-tech", "exchange": "NASDAQ"},
-    {"ticker": "MSFT", "name": "Microsoft Corporation", "sector": "Information Technology", "industry": "ai-cloud-software", "exchange": "NASDAQ"},
-    {"ticker": "NVDA", "name": "NVIDIA Corporation", "sector": "Information Technology", "industry": "semiconductors", "exchange": "NASDAQ"},
+    {"ticker": "AAPL", "name": "Apple Inc.", "sector": "Information Technology", "industry": "consumer-tech", "exchange": "NASDAQ", "tier": "watchlist"},
+    {"ticker": "MSFT", "name": "Microsoft Corporation", "sector": "Information Technology", "industry": "ai-cloud-software", "exchange": "NASDAQ", "tier": "watchlist"},
+    {"ticker": "NVDA", "name": "NVIDIA Corporation", "sector": "Information Technology", "industry": "semiconductors", "exchange": "NASDAQ", "tier": "watchlist"},
     {"ticker": "GOOGL", "name": "Alphabet Inc.", "sector": "Communication Services", "industry": "ai-cloud-software", "exchange": "NASDAQ"},
     {"ticker": "AMZN", "name": "Amazon.com Inc.", "sector": "Consumer Discretionary", "industry": "consumer-retail", "exchange": "NASDAQ"},
     {"ticker": "META", "name": "Meta Platforms Inc.", "sector": "Communication Services", "industry": "telecom-media", "exchange": "NASDAQ"},

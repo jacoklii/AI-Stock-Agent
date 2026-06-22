@@ -12,11 +12,12 @@ from collections.abc import Awaitable, Callable
 
 from app.workflows.analysis import company_rescore, prose_regeneration, significance_recheck
 from app.workflows.message import daily_digest, market_pulse
-from app.workflows.research import deep_research, followup, news_ingest, sector_research
+from app.workflows.research import deep_research, followup, market_data_ingest, news_ingest, sector_research
 from app.workflows.triggers import (
     WF_DAILY_DIGEST,
     WF_DEEP_RESEARCH,
     WF_FOLLOWUP,
+    WF_MARKET_DATA_INGEST,
     WF_MARKET_PULSE,
     WF_NEWS_INGEST,
     WF_PROSE_REGEN,
@@ -27,6 +28,7 @@ from app.workflows.triggers import (
 
 WORKFLOWS: dict[str, Callable[..., Awaitable[object]]] = {
     WF_NEWS_INGEST: news_ingest.run,
+    WF_MARKET_DATA_INGEST: market_data_ingest.run,
     WF_RESCORE: company_rescore.run,
     WF_PROSE_REGEN: prose_regeneration.run,
     WF_MARKET_PULSE: market_pulse.run,

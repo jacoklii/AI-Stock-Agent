@@ -111,7 +111,7 @@ def _patch(monkeypatch, *, fetched, recent, embeddings, sink, handle, industries
         return SimpleNamespace(summary=event.url)  # summary keyed by url for the embed lookup
 
     async def _classify(event, summary):
-        return 0.5
+        return SimpleNamespace(significance=0.5, domain=None)
 
     async def _rescore(company_ids):
         pass
