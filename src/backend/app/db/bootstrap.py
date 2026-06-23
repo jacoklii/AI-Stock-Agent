@@ -20,6 +20,7 @@ from app.config import (
     DEFAULT_THRESHOLDS,
     DEFAULT_WEEKLY_TOKEN_BUDGET,
 )
+from app.db.enums import CoverageTier
 from app.db.models.companies import Company, Industry
 from app.db.models.user import UserPreferences
 from app.db.payloads import Thresholds, UserChannels
@@ -59,6 +60,7 @@ async def ensure_defaults(
                         sector=spec["sector"],
                         exchange=spec["exchange"],
                         industry_id=industry_ids.get(spec["industry"]),
+                        coverage_tier=CoverageTier(spec.get("tier", CoverageTier.discovered.value)),
                     )
                 )
                 created["companies"] += 1

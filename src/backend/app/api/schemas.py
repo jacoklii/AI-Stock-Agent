@@ -7,12 +7,13 @@ fields (``generated_at`` / ``data_through``) ride along so the UI can show stale
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
 from app.db.enums import Channel, ChatRole, CoverageTier
+from app.utils import Horizon, WorldDomainKey
 
 # --- Shared ------------------------------------------------------------------
 
@@ -26,12 +27,6 @@ class ArticleOut(BaseModel):
     summary: str
     significance: float
     tickers: list[str]
-
-
-class RelatedArticleOut(ArticleOut):
-    """An article surfaced by semantic relatedness, carrying its cosine ``similarity`` (1 - dist)."""
-
-    similarity: float
 
 
 class RelatedSessionOut(BaseModel):
@@ -78,6 +73,55 @@ class DigestView(BaseModel):
     source_event_ids: list[int]
 
 
+# --- World surveillance feed (GET /world) ------------------------------------
+# The always-on middle view. Ordered top-down by where market moves originate; every item leads
+# with the fact + numbers (the read/chain/reports sit behind the UI's expand). `origin` keeps the
+# two-engine distinction honest ("swept" by the scraper vs "researched" by the agent), and
+# significance is surfaced only as a time `horizon` — the raw score is never sent.
+
+WorldOrigin = Literal["swept", "researched"]
+
+
+class WorldItem(BaseModel):
+    title: str                 # the fact + numbers — leads
+    detail: str | None = None  # the agent's read / context — deferred to the expand
+    horizon: Horizon
+    origin: WorldOrigin
+    published_at: datetime | None = None
+    source_url: str | None = None
+    article_refs: list[int] = Field(default_factory=list)
+    tickers: list[str] = Field(default_factory=list)
+
+
+class WorldDomain(BaseModel):
+    key: WorldDomainKey
+    title: str
+    # The agent's per-section synthesis (from section_summary); null until it has run for this domain.
+    summary: str | None = None
+    key_tickers: list[str] = Field(default_factory=list)
+    items: list[WorldItem] = Field(default_factory=list)
+
+
+class WorldSignal(BaseModel):
+    """A ranked movement for the Signals band — chain (origin→mechanism→effect) is enriched later."""
+
+    title: str
+    horizon: Horizon
+    origin: WorldOrigin
+    source_url: str | None = None
+    tickers: list[str] = Field(default_factory=list)
+
+
+class WorldView(BaseModel):
+    generated_at: datetime
+    # The agent's cross-domain synthesis (reuses the latest digest); null when none exists yet.
+    overview: DigestView | None = None
+    # Geopolitics → Macro → Industry → Market, in that fixed order.
+    domains: list[WorldDomain] = Field(default_factory=list)
+    signals_now: list[WorldSignal] = Field(default_factory=list)
+    signals_building: list[WorldSignal] = Field(default_factory=list)
+
+
 # --- Company detail ----------------------------------------------------------
 
 
@@ -95,6 +139,22 @@ class ProseOut(BaseModel):
     source_event_ids: list[int]
 
 
+class FinancialOut(BaseModel):
+    """One reporting period's headline figures — facts only, no valuation call. Point-in-time
+    fields (``price``/``market_cap``/``pe``) are present only on the most recent period."""
+
+    period_end: date
+    period_type: str  # "annual" | "quarterly"
+    price: float | None = None
+    market_cap: float | None = None
+    pe: float | None = None
+    eps: float | None = None
+    capex: float | None = None
+    ebitda: float | None = None
+    revenue: float | None = None
+    net_income: float | None = None
+
+
 class CompanyDetail(BaseModel):
     company_id: int
     ticker: str
@@ -106,6 +166,8 @@ class CompanyDetail(BaseModel):
     articles: list[ArticleOut]
     scores: list[ScoreOut]
     prose: list[ProseOut]
+    # Stored financial periods (watchlist + critical only); empty until market-data ingest runs.
+    financials: list[FinancialOut] = Field(default_factory=list)
 
 
 # --- Industry view -----------------------------------------------------------
@@ -197,6 +259,8 @@ class FollowupResponse(BaseModel):
     answer: str
     sources: list[int] = []
     source_urls: list[str] = []
+    suggest_deeper: bool = False
+    deeper_topic: str | None = None
 
 
 # --- Lists (Industries / watchlist views) -------------------------------------
@@ -316,6 +380,17 @@ class ResearchRedirectRequest(BaseModel):
     current_task: str | None = None
 
 
+# --- Ops (on-demand workflow triggers) ------------------------------------------
+# Let the user kick breadth/research *now* without waiting for the scheduler. Each run goes through
+# the normal ``run_task`` path, so it shows up in ``/agent/activity`` as a running task to poll.
+
+
+class OpsRunResponse(BaseModel):
+    workflow: str
+    # The run was spawned in the background; poll /agent/activity for the task row.
+    started: Literal[True] = True
+
+
 # --- Agent activity / budget ----------------------------------------------------
 
 
@@ -341,6 +416,10 @@ class ChatMessageOut(BaseModel):
     source_urls: list[str] = Field(default_factory=list)
     state_id: int | None = None
     created_at: datetime
+    # Live escalation hint on a fresh assistant reply (not persisted): the agent judged the question
+    # worth a bounded deep-research session. The UI offers one-click "dig deeper"; nothing auto-opens.
+    suggest_deeper: bool = False
+    deeper_topic: str | None = None
 
 
 class ChatMessageCreate(BaseModel):

@@ -86,17 +86,6 @@ class NewsEventResult(BaseModel):
     summary: str
 
 
-class SimilarEvent(BaseModel):
-    """A semantic-search hit: the event plus its cosine *similarity* (1 - distance)."""
-
-    news_event_id: int
-    headline: str
-    published_at: datetime
-    significance: float
-    summary: str
-    similarity: float
-
-
 class ScreenCandidate(BaseModel):
     company_id: int
     ticker: str

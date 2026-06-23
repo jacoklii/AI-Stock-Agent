@@ -81,6 +81,14 @@ class AnalysisSupportingInputs(BaseModel):
     source_refs: list[str] = Field(default_factory=list)
 
 
+class SectionSummaryPayload(BaseModel):
+    """The structured part of a section synthesis: the key tickers the section flags and the
+    news events the snapshot was built from (provenance)."""
+
+    key_tickers: list[str] = Field(default_factory=list)
+    source_event_ids: list[int] = Field(default_factory=list)
+
+
 # --- Chat -----------------------------------------------------------------------
 
 

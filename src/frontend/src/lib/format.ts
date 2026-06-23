@@ -46,6 +46,24 @@ export function fmtPrice(n: number | null | undefined): string {
   return n.toLocaleString("en-US", { maximumFractionDigits: 2 });
 }
 
+/** Compact large-money formatting: 1.23T / 45.6B / 789M / 12.3K. Reports the figure as-is —
+ *  it never implies a judgment. Negatives (e.g. capex) keep their sign. */
+export function fmtBig(n: number | null | undefined): string {
+  if (n == null) return "—";
+  const sign = n < 0 ? "-" : "";
+  const abs = Math.abs(n);
+  const units: [number, string][] = [
+    [1e12, "T"],
+    [1e9, "B"],
+    [1e6, "M"],
+    [1e3, "K"],
+  ];
+  for (const [scale, suffix] of units) {
+    if (abs >= scale) return `${sign}${(abs / scale).toFixed(2)}${suffix}`;
+  }
+  return `${sign}${abs.toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
+}
+
 export function fmtDateTime(iso: string | null | undefined): string {
   if (!iso) return "—";
   const d = new Date(iso);

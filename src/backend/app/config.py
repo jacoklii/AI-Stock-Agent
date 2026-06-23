@@ -57,8 +57,10 @@ class Settings(BaseSettings):
     # single credential the transport wrapper reads.
     anthropic_api_key: str | None = None
 
-    # News provider (Finnhub). Free-tier REST; depth-driven coverage.
-    finnhub_api_key: str | None = None
+    # News provider (Alpha Vantage NEWS_SENTIMENT). The single news source — breadth (by topic)
+    # and depth (by ticker) come from one keyed REST endpoint. Free tier is ~25 requests/day, so the
+    # ingest spends calls deliberately (see ALPHAVANTAGE_* below). One call returns up to 1000 items.
+    alphavantage_api_key: str | None = None
 
     # SEC EDGAR is public and keyless but requires a descriptive User-Agent on every request.
     sec_user_agent: str = "ai-stock-agent (contact: set SEC_USER_AGENT)"
@@ -124,27 +126,104 @@ MODEL_HAIKU = "claude-haiku-4-5-20251001"
 DEEP_RESEARCH_MAX_ITERS = 24
 
 # Breadth calls the researcher back: a newly stored (or recheck-promoted) event at/above this
-# significance wakes the autonomous deep-research session between scheduled shifts.
-DEEP_RESEARCH_WAKEUP_SIGNIFICANCE = 0.7
+# significance wakes the autonomous deep-research session between scheduled shifts. Tuned for Alpha
+# Vantage relevance (which skews lower than an LLM 0..1 importance score) — revisit against live data.
+DEEP_RESEARCH_WAKEUP_SIGNIFICANCE = 0.5
 
 # An open session older than this is force-completed (flushed findings promoted, then closed) at
 # the next autonomous wakeup, so one never-finishing thread can't monopolize resume-first.
 DEEP_RESEARCH_MAX_SESSION_AGE_DAYS = 7
 
+# --- World surveillance feed (GET /world) -------------------------------------
+# Significance is shown to the user as TIME, never a number (PROJECT.md §8). An item is "Now"
+# (act on the tape today) when it is both recent and material; otherwise "Building" (expected to
+# matter ahead). The raw score only orders items within a horizon and is never returned for display.
+# The "significance" stored on a news event is Alpha Vantage's relevance score, so these thresholds
+# are tuned to AV's distribution (lower than an LLM 0..1 importance score) — revisit against live data.
+WORLD_NOW_WINDOW_HOURS = 48
+WORLD_NOW_MIN_SIGNIFICANCE = 0.4
+# How many recent significant events the feed scans before grouping into domains.
+WORLD_FEED_LIMIT = 120
+# How many ranked movements the Signals band carries (split across Now / Building).
+WORLD_SIGNALS_LIMIT = 12
+# Freshness shelf-life: week-old items drop off the live feed even if re-crawled fresh. Relevance is
+# already gated once at ingest (ALPHAVANTAGE_MIN_RELEVANCE) — there's no second display floor.
+WORLD_MAX_AGE_HOURS = 168
 
-# --- Semantic dedup + routing (news ingest) -----------------------------------
-# Near-duplicate gate: the same story from many outlets becomes one event. After the summary is
-# embedded, cosine top-1 over recent events; at/above this similarity the row is a duplicate and is
-# dropped (counted, not written). High floor on purpose — distinct events must not be merged.
-DEDUP_SIMILARITY_THRESHOLD = 0.92
-# Only compare against events from the last N days — the same story doesn't recur weeks apart, and
-# the window bounds the cosine scan.
+# --- Per-section synthesis ----------------------------------------------------
+# How many recent events feed one section snapshot (the AI's per-section news synthesis). Bounds the
+# Sonnet prompt; a section with no events is skipped (no LLM call).
+SECTION_EVENT_LIMIT = 40
+
+# --- News ingest relevance filter --------------------------------------------
+# Alpha Vantage already curates and scores its feed, so ingest trusts the API instead of paying an
+# LLM to re-judge importance: an item whose AV relevance is below this floor is dropped after dedup,
+# before any summarize/embed spend. Raise it for a leaner feed, lower it for more breadth.
+ALPHAVANTAGE_MIN_RELEVANCE = 0.10
+
+# Thin keyword classifier that routes a stored event into one of the four surveillance domains,
+# in priority order: geopolitics (origin of moves) and macro win on keyword; otherwise a
+# company-named event is market, an industry-tagged event is industry, and an orphan global event
+# defaults to geopolitics. This is the architecture-first placeholder for a real `domain` column.
+WORLD_GEOPOLITICS_KEYWORDS = (
+    "war", "conflict", "sanction", "tariff", "trade dispute", "election", "strait",
+    "military", "missile", "invasion", "geopolit", "embargo", "border", "coup", "ceasefire",
+    "opec", "supply chain", "blockade", "treaty", "diplomat",
+)
+WORLD_MACRO_KEYWORDS = (
+    "inflation", "cpi", "ppi", "interest rate", "rate cut", "rate hike", "federal reserve",
+    "the fed", "central bank", "ecb", "employment", "jobs report", "payroll", "unemployment",
+    "gdp", "yield", "bond", "treasury", "currency", "dollar", "commodity", "recession",
+    "monetary", "fiscal",
+)
+
+
+# --- Lexical dedup window (news ingest) ---------------------------------------
+# The same story re-crawled within this window is dropped on the normalized-headline gate; a
+# genuinely recurring topic weeks later is not. Alpha Vantage's structured tickers/topics make a
+# semantic (embedding) dedup pass unnecessary, so there's no similarity threshold to tune.
 DEDUP_LOOKBACK_DAYS = 3
 
-# Orphan-routing gate: a macro/general item with no company match is routed to its closest industry
-# by cosine over the industry embeddings. Below this similarity it stays unrouted (industry_id=None)
-# rather than forced into a poor fit.
-ROUTE_SIMILARITY_THRESHOLD = 0.45
+
+# --- Alpha Vantage NEWS_SENTIMENT (the single news source) --------------------
+# Topics swept on each breadth run, comma-joined into one request (free tier ≈ 25 req/day, and the
+# hourly ingest fires 24×/day — so deliberately one call per sweep). Each returned article carries
+# ``ticker_sentiment``, so a watchlisted name mentioned anywhere resolves to its company without a
+# second call. NOTE: Alpha Vantage has no "geopolitics" topic — ``economy_fiscal`` is swept as its
+# closest proxy (mapped to geopolitics below), and the WORLD_GEOPOLITICS_KEYWORDS router still
+# overrides for explicit war/sanction/tariff items regardless of AV topic.
+ALPHAVANTAGE_NEWS_TOPICS: tuple[str, ...] = (
+    "economy_macro", "economy_monetary", "economy_fiscal", "financial_markets",
+    "mergers_and_acquisitions", "technology", "manufacturing", "energy_transportation",
+    "life_sciences", "finance",
+)
+# Max articles per request (AV allows up to 1000). Kept modest so a sweep's summarize/embed cost
+# stays bounded; the relevance filter trims further.
+ALPHAVANTAGE_NEWS_LIMIT = 50
+# Optional depth: a second request filtered by watchlist tickers. Off by default to respect the free
+# tier (it would double daily calls); enable with a paid key (and lower the ingest cron cadence).
+ALPHAVANTAGE_FETCH_TICKER_DEPTH = False
+# Maps an Alpha Vantage topic to one of our surveillance domains. AV has no "geopolitics" topic;
+# ``economy_fiscal`` (trade, tariffs, sanctions, government/fiscal policy) is its closest proxy, so it
+# routes there. Explicit war/sanction/strait/tariff items still land in geopolitics first via the
+# keyword classifier (which runs ahead of this hint in news_ingest), regardless of their AV topic.
+ALPHAVANTAGE_TOPIC_DOMAIN: dict[str, str] = {
+    "economy_macro": "macro",
+    "economy_monetary": "macro",
+    "economy_fiscal": "geopolitics",  # AV's closest geopolitics proxy (trade/tariffs/sanctions/fiscal)
+    "financial_markets": "macro",
+    "finance": "macro",
+    "mergers_and_acquisitions": "market",
+    "earnings": "market",
+    "ipo": "market",
+    "technology": "industry",
+    "manufacturing": "industry",
+    "energy_transportation": "industry",
+    "life_sciences": "industry",
+    "real_estate": "industry",
+    "retail_wholesale": "industry",
+    "blockchain": "industry",
+}
 
 
 # --- Fixed constants ----------------------------------------------------------
@@ -203,12 +282,14 @@ DEFAULT_INDUSTRIES: list[dict[str, str]] = [
     {"key": "telecom-media", "name": "Telecom & Media", "description": "Carriers, streaming, advertising, and social platforms."},
 ]
 
-# Popular mega-caps as the starting research surface — ``discovered`` tier (lightweight
-# tracking only; the deliberate cost boundary keeps deep scoring on the watchlist).
+# Popular mega-caps as the starting research surface. Most start ``discovered`` (lightweight
+# tracking only; the deliberate cost boundary keeps deep scoring on the watchlist). A few ship on
+# the ``watchlist`` so a fresh install has working depth out of the box — company-news depth,
+# scoring, and financials flow immediately; the user re-tiers any of them in Settings afterwards.
 DEFAULT_COMPANIES: list[dict[str, str]] = [
-    {"ticker": "AAPL", "name": "Apple Inc.", "sector": "Information Technology", "industry": "consumer-tech", "exchange": "NASDAQ"},
-    {"ticker": "MSFT", "name": "Microsoft Corporation", "sector": "Information Technology", "industry": "ai-cloud-software", "exchange": "NASDAQ"},
-    {"ticker": "NVDA", "name": "NVIDIA Corporation", "sector": "Information Technology", "industry": "semiconductors", "exchange": "NASDAQ"},
+    {"ticker": "AAPL", "name": "Apple Inc.", "sector": "Information Technology", "industry": "consumer-tech", "exchange": "NASDAQ", "tier": "watchlist"},
+    {"ticker": "MSFT", "name": "Microsoft Corporation", "sector": "Information Technology", "industry": "ai-cloud-software", "exchange": "NASDAQ", "tier": "watchlist"},
+    {"ticker": "NVDA", "name": "NVIDIA Corporation", "sector": "Information Technology", "industry": "semiconductors", "exchange": "NASDAQ", "tier": "watchlist"},
     {"ticker": "GOOGL", "name": "Alphabet Inc.", "sector": "Communication Services", "industry": "ai-cloud-software", "exchange": "NASDAQ"},
     {"ticker": "AMZN", "name": "Amazon.com Inc.", "sector": "Consumer Discretionary", "industry": "consumer-retail", "exchange": "NASDAQ"},
     {"ticker": "META", "name": "Meta Platforms Inc.", "sector": "Communication Services", "industry": "telecom-media", "exchange": "NASDAQ"},

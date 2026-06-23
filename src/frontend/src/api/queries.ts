@@ -26,6 +26,32 @@ export function useBudget() {
   });
 }
 
+// --- Ops (on-demand workflow triggers) ---------------------------------------------
+// Kick a sweep/digest now instead of waiting for the scheduler; the run surfaces in the activity
+// feed. We invalidate the agent + world queries so the new task and any fresh events show up.
+
+export function useOpsSweep() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => unwrap(await api.POST("/ops/sweep")),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["activity"] });
+      void qc.invalidateQueries({ queryKey: ["world"] });
+      void qc.invalidateQueries({ queryKey: ["inbox"] });
+    },
+  });
+}
+
+// --- World surveillance feed -------------------------------------------------------
+
+export function useWorld() {
+  return useQuery({
+    queryKey: ["world"],
+    queryFn: async () => unwrap(await api.GET("/world")),
+    refetchInterval: 30_000,
+  });
+}
+
 // --- Digest / home ----------------------------------------------------------------
 
 export function useDigest() {
@@ -252,19 +278,6 @@ export function useCompanyDetail(companyId: number) {
           params: { path: { company_id: companyId } },
         }),
       ),
-  });
-}
-
-export function useCompanyRelated(companyId: number) {
-  return useQuery({
-    queryKey: ["companies", "detail", companyId, "related"],
-    queryFn: async () =>
-      unwrap(
-        await api.GET("/companies/{company_id}/related", {
-          params: { path: { company_id: companyId } },
-        }),
-      ),
-    staleTime: 60_000,
   });
 }
 

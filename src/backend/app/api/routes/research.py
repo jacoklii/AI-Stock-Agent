@@ -316,4 +316,10 @@ async def followup(body: FollowupRequest) -> FollowupResponse:
     out = await followup_wf.run(
         query=body.query, company_id=body.company_id, industry_id=body.industry_id
     )
-    return FollowupResponse(answer=out.answer, sources=out.sources, source_urls=out.source_urls)
+    return FollowupResponse(
+        answer=out.answer,
+        sources=out.sources,
+        source_urls=out.source_urls,
+        suggest_deeper=out.suggest_deeper,
+        deeper_topic=out.deeper_topic,
+    )

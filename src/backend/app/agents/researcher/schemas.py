@@ -16,18 +16,6 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
-class ArticleSummaryOut(BaseModel):
-    """Per-article ingest output: the canonical summary (no raw body stored)."""
-
-    summary: str
-
-
-class SignificanceOut(BaseModel):
-    """Significance classification for a news event (0 = irrelevant, 1 = highly significant)."""
-
-    significance: float = Field(ge=0.0, le=1.0)
-
-
 class SnapshotOut(BaseModel):
     """A short prose snapshot (brief movement, or top-of-digest synthesis)."""
 
@@ -49,11 +37,16 @@ class CompanyProseOut(BaseModel):
 
 
 class FollowupOut(BaseModel):
-    """A scoped follow-up answer, with the source event IDs and/or web URLs it drew on."""
+    """A scoped follow-up answer, with the source event IDs and/or web URLs it drew on. When the
+    question really needs a bounded, multi-step research session, the agent flags ``suggest_deeper``
+    and proposes ``deeper_topic`` — the interface offers a one-click escalation (human stays in the
+    loop; nothing is auto-opened)."""
 
     answer: str
     sources: list[int] = Field(default_factory=list)
     source_urls: list[str] = Field(default_factory=list)
+    suggest_deeper: bool = False
+    deeper_topic: str | None = None
 
 
 class DeepResearchOut(BaseModel):

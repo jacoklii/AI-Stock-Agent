@@ -25,6 +25,7 @@ class ScheduleSlot:
     cron: str
     workflow: str
     params: dict[str, str]
+    timezone: str
 
     @classmethod
     def from_trigger(cls, trigger: Trigger) -> "ScheduleSlot":
@@ -34,6 +35,7 @@ class ScheduleSlot:
             cron=trigger.cron,
             workflow=trigger.workflow,
             params=dict(trigger.params),
+            timezone=trigger.timezone,
         )
 
 

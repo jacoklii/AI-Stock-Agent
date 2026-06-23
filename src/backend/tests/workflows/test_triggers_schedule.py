@@ -1,8 +1,7 @@
 """Coherence tests for the trigger registry and the derived schedule.
 
-The autonomy work hangs on this wiring: breadth runs hourly, the recheck actually fires, the
-signal-convergence event trigger is declared, every cron parses, and every scheduled slot
-resolves to a registered workflow.
+The autonomy work hangs on this wiring: breadth runs hourly, the signal-convergence event
+trigger is declared, every cron parses, and every scheduled slot resolves to a registered workflow.
 """
 
 from __future__ import annotations
@@ -16,22 +15,26 @@ from app.workflows.triggers import (
     TriggerKind,
     WF_DEEP_RESEARCH,
     WF_NEWS_INGEST,
-    WF_SIGNIFICANCE_RECHECK,
 )
 
 
-def test_breadth_runs_hourly() -> None:
-    t = TRIGGERS["news_ingest_hourly"]
-    assert t.kind is TriggerKind.scheduled
-    assert t.workflow == WF_NEWS_INGEST
-    assert t.cron == "0 * * * *"
+def test_breadth_runs_day_and_night_on_et_clock() -> None:
+    day = TRIGGERS["news_ingest_day"]
+    night = TRIGGERS["news_ingest_night"]
+    for t in (day, night):
+        assert t.kind is TriggerKind.scheduled
+        assert t.workflow == WF_NEWS_INGEST
+        # AV news sweeps run on a US-market clock so the day/night split tracks the session.
+        assert t.timezone == "America/New_York"
+    assert day.cron == "0 6-19 * * *"
+    assert night.cron == "0 20,23,2,5 * * *"
 
 
-def test_significance_recheck_is_scheduled() -> None:
-    t = TRIGGERS["significance_recheck_daily"]
-    assert t.kind is TriggerKind.scheduled
-    assert t.workflow == WF_SIGNIFICANCE_RECHECK
-    assert t.cron == "0 21 * * 1-5"
+def test_other_scheduled_triggers_stay_utc() -> None:
+    # Only the AV news sweeps move off UTC; every other job keeps the system-wide UTC clock.
+    for t in TRIGGERS.values():
+        if t.kind is TriggerKind.scheduled and not t.name.startswith("news_ingest_"):
+            assert t.timezone == "UTC"
 
 
 def test_signal_convergence_event_trigger_declared() -> None:

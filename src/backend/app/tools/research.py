@@ -15,6 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import BRIEF_CORE
+from app.db.enums import NewsDomain
 from app.db.models.analysis import Analysis
 from app.db.models.companies import Company
 from app.db.models.market_data import Financial, Price
@@ -26,13 +27,11 @@ from app.db.payloads import BriefInstrument
 from app.providers.embeddings import EmbeddingsProvider
 from app.providers.market import MarketDataProvider
 from app.tools.registry import (
-    TASK_ARTICLE_SUMMARY,
     TASK_COMPANY_PROSE,
     TASK_DEEP_RESEARCH,
     TASK_FOLLOWUP,
     TASK_PULSE_SNAPSHOT,
     TASK_SECTION_SNAPSHOT,
-    TASK_SIGNIFICANCE,
     TASK_TOP_SNAPSHOT,
     tool,
 )
@@ -43,7 +42,6 @@ from app.tools.tool_schema import (
     PriceRow,
     ScreenCandidate,
     ScreenFilters,
-    SimilarEvent,
     SimilarHit,
     UserInterestHit,
 )
@@ -159,12 +157,10 @@ async def get_price_history(
 
 @tool(
     name="get_news_events",
-    description="News events filtered by company and/or industry and minimum significance. Pass "
-    "industry_id to pull an industry's events — company-tagged plus macro items routed to it — in "
-    "one call.",
+    description="News events filtered by company, industry, surveillance domain, and/or minimum "
+    "significance. Pass industry_id to pull an industry's company-tagged events; pass domain "
+    "(geopolitics|macro|industry|market) to pull a surveillance section's events.",
     tasks={
-        TASK_ARTICLE_SUMMARY,
-        TASK_SIGNIFICANCE,
         TASK_SECTION_SNAPSHOT,
         TASK_COMPANY_PROSE,
         TASK_TOP_SNAPSHOT,
@@ -178,17 +174,20 @@ async def get_news_events(
     *,
     company_id: int | None = None,
     industry_id: int | None = None,
+    domain: NewsDomain | None = None,
     min_significance: float | None = None,
     limit: int = 50,
 ) -> list[NewsEventResult]:
-    """Filter by company and/or industry. ``industry_id`` matches events routed to that industry
-    (company-tagged and orphan macro alike). ``min_significance`` keeps events at or above the given
-    score (0–1)."""
+    """Filter by company, industry, and/or surveillance ``domain``. ``industry_id`` matches events
+    tagged to that industry; ``domain`` matches the section a stored event was routed into.
+    ``min_significance`` keeps events at or above the given score (0–1)."""
     stmt = select(NewsEvent)
     if company_id is not None:
         stmt = stmt.where(NewsEvent.company_id == company_id)
     if industry_id is not None:
         stmt = stmt.where(NewsEvent.industry_id == industry_id)
+    if domain is not None:
+        stmt = stmt.where(NewsEvent.domain == domain)
     if min_significance is not None:
         stmt = stmt.where(NewsEvent.significance >= min_significance)
     stmt = stmt.order_by(NewsEvent.published_at.desc()).limit(limit)
@@ -288,44 +287,6 @@ async def get_brief_state(
 get_pulse_state = get_brief_state
 
 
-@tool(
-    name="search_similar_events",
-    description="Semantic search over stored news summaries (cosine).",
-    tasks={TASK_SIGNIFICANCE, TASK_SECTION_SNAPSHOT, TASK_COMPANY_PROSE, TASK_FOLLOWUP},
-    output_model=SimilarEvent,
-)
-async def search_similar_events(
-    session: AsyncSession,
-    embeddings_provider: EmbeddingsProvider,
-    *,
-    query_text: str,
-    k: int = 10,
-) -> list[SimilarEvent]:
-    """Embed ``query_text`` with the fixed model and rank stored summary embeddings by cosine
-    distance. Only events embedded with the same model are comparable."""
-    embedded = await embeddings_provider.embed_query(query_text)
-    distance = NewsEvent.embedding.cosine_distance(embedded.vector)
-    stmt = (
-        select(NewsEvent, distance.label("distance"))
-        .where(NewsEvent.embedding.is_not(None))
-        .where(NewsEvent.embedding_model == embedded.model)
-        .order_by(distance.asc())
-        .limit(k)
-    )
-    rows = (await session.execute(stmt)).all()
-    return [
-        SimilarEvent(
-            news_event_id=event.id,
-            headline=event.headline,
-            published_at=event.published_at,
-            significance=event.significance,
-            summary=event.summary,
-            similarity=1.0 - float(dist),
-        )
-        for event, dist in rows
-    ]
-
-
 async def search_similar_by_vector(
     session: AsyncSession,
     model_cls,
@@ -357,8 +318,9 @@ async def search_similar_by_vector(
 
 
 # Per-scope mapping for the generalized semantic search: model + how to project a hit.
+# News carries no embedding (Alpha Vantage's structured tickers/topics replaced semantic news
+# search), so the similar-scopes are the AI-written surfaces that still embed: analysis + state.
 _SIMILAR_SCOPES = {
-    "news": (NewsEvent, lambda r: (r.headline, r.summary)),
     "analysis": (Analysis, lambda r: (f"{r.type.value} analysis", None)),
     "state": (ResearchState, lambda r: (r.topic, r.findings)),
 }
@@ -366,7 +328,7 @@ _SIMILAR_SCOPES = {
 
 @tool(
     name="search_similar",
-    description="Semantic search over stored summaries, analysis, or research state (cosine).",
+    description="Semantic search over stored analysis or research state (cosine).",
     tasks={TASK_FOLLOWUP, TASK_DEEP_RESEARCH},
     output_model=SimilarHit,
 )
@@ -375,11 +337,11 @@ async def search_similar(
     embeddings_provider: EmbeddingsProvider,
     *,
     query_text: str,
-    scope: str = "news",
+    scope: str = "analysis",
     k: int = 10,
 ) -> list[SimilarHit]:
     """Embed ``query_text`` with the fixed model and rank one embedded surface by cosine
-    distance. ``scope`` is one of news | analysis | state. Only rows embedded with the same
+    distance. ``scope`` is one of analysis | state. Only rows embedded with the same
     model are comparable."""
     if scope not in _SIMILAR_SCOPES:
         raise ValueError(f"scope must be one of {list(_SIMILAR_SCOPES)}")

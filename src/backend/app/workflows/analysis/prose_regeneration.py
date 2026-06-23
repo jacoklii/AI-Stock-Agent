@@ -20,7 +20,7 @@ from app.db.session import SessionLocal, readonly_session
 from app.providers.embeddings import get_embeddings_provider
 from app.tools.analysis import get_latest_prose, get_latest_scores
 from app.tools.registry import TASK_COMPANY_PROSE
-from app.tools.research import get_news_events, search_similar_events
+from app.tools.research import get_news_events
 from app.workflows.concurrency import company_lock
 from app.workflows.runtime import run_task
 from app.workflows.triggers import WF_PROSE_REGEN
@@ -70,9 +70,6 @@ async def run(*, company_id: int, kind: str) -> None:
                 context = {
                     "scores": await get_latest_scores(session, company_id=company_id),
                     "news": await get_news_events(session, company_id=company_id, limit=30),
-                    "similar": await search_similar_events(
-                        session, embeddings, query_text=f"company {company_id} {kind}", k=10
-                    ),
                     "previous": await get_latest_prose(session, company_id=company_id, kind=kind),
                 }
             prior_row = await _latest_score_row(company_id, kind)

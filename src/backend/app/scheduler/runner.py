@@ -21,7 +21,7 @@ from app.workflows.registry import get_workflow
 def _add_job(scheduler: AsyncIOScheduler, slot: ScheduleSlot) -> None:
     scheduler.add_job(
         get_workflow(slot.workflow),
-        CronTrigger.from_crontab(slot.cron, timezone="UTC"),
+        CronTrigger.from_crontab(slot.cron, timezone=slot.timezone),
         kwargs=dict(slot.params),
         id=slot.name,
         replace_existing=True,

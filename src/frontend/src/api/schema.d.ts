@@ -120,30 +120,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/companies/{company_id}/related": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Company Related
-         * @description Articles across the market most related to this company — semantic discovery, zero LLM.
-         *
-         *     Query vector is the company's most-significant recent embedded event; we cosine-rank all events
-         *     and drop this company's own, so the panel surfaces what's happening *elsewhere* on the same
-         *     theme. Empty when the company has no embedded events yet.
-         */
-        get: operations["company_related_companies__company_id__related_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/companies/{company_id}/watchlist": {
         parameters: {
             query?: never;
@@ -555,6 +531,89 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/world": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * World
+         * @description The surveillance feed: the agent's overview, the four domains, and the Now/Building signals.
+         */
+        get: operations["world_world_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ops/sweep": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sweep
+         * @description Run one news-ingest cycle now: pull + classify + embed + write events (the scraper sweep).
+         *
+         *     A ``workflow_slot`` guard inside the workflow makes a concurrent sweep a no-op, so double-clicks
+         *     are safe.
+         */
+        post: operations["sweep_ops_sweep_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ops/digest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Digest
+         * @description Run the daily digest now: refresh breadth, write the cross-domain overview, deliver it.
+         */
+        post: operations["digest_ops_digest_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ops/refresh-financials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refresh Financials
+         * @description Refresh stored financials + daily prices for watchlist + critical names (the quant surface).
+         */
+        post: operations["refresh_financials_ops_refresh_financials_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -715,6 +774,13 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /**
+             * Suggest Deeper
+             * @default false
+             */
+            suggest_deeper: boolean;
+            /** Deeper Topic */
+            deeper_topic?: string | null;
         };
         /**
          * ChatRole
@@ -742,6 +808,8 @@ export interface components {
             scores: components["schemas"]["ScoreOut"][];
             /** Prose */
             prose: components["schemas"]["ProseOut"][];
+            /** Financials */
+            financials?: components["schemas"]["FinancialOut"][];
         };
         /** CompanyListItem */
         CompanyListItem: {
@@ -789,6 +857,36 @@ export interface components {
             /** Source Event Ids */
             source_event_ids: number[];
         };
+        /**
+         * FinancialOut
+         * @description One reporting period's headline figures — facts only, no valuation call. Point-in-time
+         *     fields (``price``/``market_cap``/``pe``) are present only on the most recent period.
+         */
+        FinancialOut: {
+            /**
+             * Period End
+             * Format: date
+             */
+            period_end: string;
+            /** Period Type */
+            period_type: string;
+            /** Price */
+            price?: number | null;
+            /** Market Cap */
+            market_cap?: number | null;
+            /** Pe */
+            pe?: number | null;
+            /** Eps */
+            eps?: number | null;
+            /** Capex */
+            capex?: number | null;
+            /** Ebitda */
+            ebitda?: number | null;
+            /** Revenue */
+            revenue?: number | null;
+            /** Net Income */
+            net_income?: number | null;
+        };
         /** FollowupRequest */
         FollowupRequest: {
             /** Query */
@@ -812,6 +910,13 @@ export interface components {
              * @default []
              */
             source_urls: string[];
+            /**
+             * Suggest Deeper
+             * @default false
+             */
+            suggest_deeper: boolean;
+            /** Deeper Topic */
+            deeper_topic?: string | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -873,6 +978,17 @@ export interface components {
             description: string | null;
             /** Articles */
             articles: components["schemas"]["ArticleOut"][];
+        };
+        /** OpsRunResponse */
+        OpsRunResponse: {
+            /** Workflow */
+            workflow: string;
+            /**
+             * Started
+             * @default true
+             * @constant
+             */
+            started: true;
         };
         /** PreferencesOut */
         PreferencesOut: {
@@ -944,33 +1060,6 @@ export interface components {
             generated_at: string;
             /** Source Event Ids */
             source_event_ids: number[];
-        };
-        /**
-         * RelatedArticleOut
-         * @description An article surfaced by semantic relatedness, carrying its cosine ``similarity`` (1 - dist).
-         */
-        RelatedArticleOut: {
-            /** News Event Id */
-            news_event_id: number;
-            /** Url */
-            url: string;
-            /** Source */
-            source: string | null;
-            /**
-             * Published At
-             * Format: date-time
-             */
-            published_at: string;
-            /** Headline */
-            headline: string;
-            /** Summary */
-            summary: string;
-            /** Significance */
-            significance: number;
-            /** Tickers */
-            tickers: string[];
-            /** Similarity */
-            similarity: number;
         };
         /**
          * RelatedSessionOut
@@ -1217,6 +1306,84 @@ export interface components {
              */
             action: "promote" | "demote";
         };
+        /** WorldDomain */
+        WorldDomain: {
+            /**
+             * Key
+             * @enum {string}
+             */
+            key: "geopolitics" | "macro" | "industry" | "market";
+            /** Title */
+            title: string;
+            /** Summary */
+            summary?: string | null;
+            /** Key Tickers */
+            key_tickers?: string[];
+            /** Items */
+            items?: components["schemas"]["WorldItem"][];
+        };
+        /** WorldItem */
+        WorldItem: {
+            /** Title */
+            title: string;
+            /** Detail */
+            detail?: string | null;
+            /**
+             * Horizon
+             * @enum {string}
+             */
+            horizon: "now" | "building";
+            /**
+             * Origin
+             * @enum {string}
+             */
+            origin: "swept" | "researched";
+            /** Published At */
+            published_at?: string | null;
+            /** Source Url */
+            source_url?: string | null;
+            /** Article Refs */
+            article_refs?: number[];
+            /** Tickers */
+            tickers?: string[];
+        };
+        /**
+         * WorldSignal
+         * @description A ranked movement for the Signals band — chain (origin→mechanism→effect) is enriched later.
+         */
+        WorldSignal: {
+            /** Title */
+            title: string;
+            /**
+             * Horizon
+             * @enum {string}
+             */
+            horizon: "now" | "building";
+            /**
+             * Origin
+             * @enum {string}
+             */
+            origin: "swept" | "researched";
+            /** Source Url */
+            source_url?: string | null;
+            /** Tickers */
+            tickers?: string[];
+        };
+        /** WorldView */
+        WorldView: {
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            overview?: components["schemas"]["DigestView"] | null;
+            /** Domains */
+            domains?: components["schemas"]["WorldDomain"][];
+            /** Signals Now */
+            signals_now?: components["schemas"]["WorldSignal"][];
+            /** Signals Building */
+            signals_building?: components["schemas"]["WorldSignal"][];
+        };
     };
     responses: never;
     parameters: never;
@@ -1358,39 +1525,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CompanyDetail"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    company_related_companies__company_id__related_get: {
-        parameters: {
-            query?: {
-                limit?: number;
-            };
-            header?: never;
-            path: {
-                company_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RelatedArticleOut"][];
                 };
             };
             /** @description Validation Error */
@@ -2089,6 +2223,86 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BudgetOut"];
+                };
+            };
+        };
+    };
+    world_world_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorldView"];
+                };
+            };
+        };
+    };
+    sweep_ops_sweep_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpsRunResponse"];
+                };
+            };
+        };
+    };
+    digest_ops_digest_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpsRunResponse"];
+                };
+            };
+        };
+    };
+    refresh_financials_ops_refresh_financials_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpsRunResponse"];
                 };
             };
         };

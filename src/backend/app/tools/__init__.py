@@ -25,7 +25,6 @@ from app.tools.research import (
     get_price_history,
     screen_stocks,
     search_similar,
-    search_similar_events,
 )
 from app.tools.state import (
     close_research,
@@ -47,7 +46,6 @@ __all__ = [
     "get_news_events",
     "get_brief_state",
     "screen_stocks",
-    "search_similar_events",
     "search_similar",
     # analysis
     "get_latest_scores",

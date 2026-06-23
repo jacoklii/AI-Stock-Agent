@@ -33,6 +33,16 @@ class AnalysisType(str, enum.Enum):
     summary = "summary"
 
 
+class NewsDomain(str, enum.Enum):
+    """The surveillance domain a news event belongs to — where the move originates. Values match
+    the ``WorldDomainKey`` literal in ``app.utils`` so the classifier output maps straight onto it."""
+
+    geopolitics = "geopolitics"
+    macro = "macro"
+    industry = "industry"
+    market = "market"
+
+
 class TaskStatus(str, enum.Enum):
     pending = "pending"
     running = "running"
@@ -78,6 +88,7 @@ def _pg_enum(py_enum: type[enum.Enum], name: str) -> SAEnum:
 coverage_tier_enum = _pg_enum(CoverageTier, "coverage_tier")
 state_status_enum = _pg_enum(StateStatus, "state_status")
 analysis_type_enum = _pg_enum(AnalysisType, "analysis_type")
+news_domain_enum = _pg_enum(NewsDomain, "news_domain")
 task_status_enum = _pg_enum(TaskStatus, "task_status")
 channel_enum = _pg_enum(Channel, "channel")
 chat_role_enum = _pg_enum(ChatRole, "chat_role")
@@ -89,6 +100,7 @@ ALL_ENUMS: list[tuple[type[enum.Enum], str]] = [
     (CoverageTier, "coverage_tier"),
     (StateStatus, "state_status"),
     (AnalysisType, "analysis_type"),
+    (NewsDomain, "news_domain"),
     (TaskStatus, "task_status"),
     (Channel, "channel"),
     (ChatRole, "chat_role"),

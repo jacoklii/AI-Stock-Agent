@@ -1,5 +1,6 @@
 import { FreshnessStamp } from "./FreshnessStamp";
-import { SignificanceBadge } from "./SignificanceBadge";
+import { HorizonTag } from "./HorizonTag";
+import { horizonOf } from "../lib/freshness";
 import type { ArticleOut } from "../api/types";
 
 /** Articles are first-class content: URL up front, AI summary as orientation alongside. */
@@ -20,7 +21,7 @@ export function ArticleList({ articles }: { articles: ArticleOut[] }) {
             >
               {a.headline}
             </a>
-            <SignificanceBadge value={a.significance} />
+            <HorizonTag horizon={horizonOf(a.significance, a.published_at)} />
           </div>
           <p className="mt-1 text-sm leading-snug text-neutral-600">{a.summary}</p>
           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-neutral-400">
