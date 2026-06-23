@@ -1,10 +1,6 @@
 import type { ReactNode } from "react";
 
-import {
-  useCompanyDetail,
-  useCompanyRelated,
-  useWatchlistAction,
-} from "../api/queries";
+import { useCompanyDetail, useWatchlistAction } from "../api/queries";
 import { ArticleList } from "../components/ArticleList";
 import { FreshnessStamp } from "../components/FreshnessStamp";
 import { Prose } from "../components/Prose";
@@ -26,7 +22,6 @@ export function CompanyDetail({
   onResearch: (topic: string) => void;
 }) {
   const detail = useCompanyDetail(companyId);
-  const related = useCompanyRelated(companyId);
   const watchlist = useWatchlistAction(companyId);
 
   return (
@@ -145,15 +140,6 @@ export function CompanyDetail({
                     </Empty>
                   )}
                 </Section>
-
-                {related.data && related.data.length > 0 && (
-                  <Section title="Related across the market">
-                    <p className="mb-2 text-xs" style={{ color: "var(--text-dim)" }}>
-                      Events elsewhere on the same theme — surfaced by similarity, not by ticker.
-                    </p>
-                    <ArticleList articles={related.data} />
-                  </Section>
-                )}
               </div>
             );
           })()}

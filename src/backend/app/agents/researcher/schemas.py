@@ -16,21 +16,6 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
-class ArticleSummaryOut(BaseModel):
-    """Per-article ingest output: the canonical summary (no raw body stored)."""
-
-    summary: str
-
-
-class SignificanceOut(BaseModel):
-    """Significance classification for a news event (0 = irrelevant, 1 = highly significant), plus
-    the surveillance domain the event belongs to. ``domain`` is optional — the ingest pipeline falls
-    back to a deterministic keyword router when the model abstains (null)."""
-
-    significance: float = Field(ge=0.0, le=1.0)
-    domain: Literal["geopolitics", "macro", "industry", "market"] | None = None
-
-
 class SnapshotOut(BaseModel):
     """A short prose snapshot (brief movement, or top-of-digest synthesis)."""
 

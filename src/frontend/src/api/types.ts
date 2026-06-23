@@ -4,7 +4,6 @@ import type { components } from "./schema";
 type S = components["schemas"];
 
 export type ArticleOut = S["ArticleOut"];
-export type RelatedArticleOut = S["RelatedArticleOut"];
 export type RelatedSessionOut = S["RelatedSessionOut"];
 export type ActivityOut = S["ActivityOut"];
 export type BudgetOut = S["BudgetOut"];

@@ -1,42 +1,41 @@
-"""News ingest pipeline — pull events, dedupe, summarize, classify, embed, write, enqueue re-scoring.
+"""News ingest pipeline — pull events, dedupe, filter by relevance, write, re-score.
 
-The full research surface (not just the watchlist) flows through here. The original article body
-is never stored; the AI summary is the canonical record, embedded in the same write as its row.
+The full research surface (not just the watchlist) flows through here from Alpha Vantage. Alpha
+Vantage already curates, scores, and summarizes its feed, so ingest is deliberately lean: it does no
+per-article LLM call and no embedding. Each kept event stores **Alpha Vantage's own extractive
+summary** as its canonical record (the original article body is never stored), with the AV relevance
+score as the event's ``significance``. Per-section synthesis (``section_synthesis``) is where the AI
+writes prose; this path just sweeps and files.
 
-Runs hourly (and inline from the daily digest) — already-stored URLs are skipped before any AI
-spend, and a ``workflow_slot`` guard keeps concurrent runs from racing. Events with significance
-below ``_MIN_SIGNIFICANCE`` are dropped before reaching the DB. Watchlisted companies named by new
-events are enqueued for re-scoring (the event trigger), and an event at or above
-``DEEP_RESEARCH_WAKEUP_SIGNIFICANCE`` wakes the autonomous researcher (signal convergence).
+Runs day/night on the AV cadence (and inline from the daily digest) — already-stored URLs and
+near-identical headlines are skipped before the row is written, and a ``workflow_slot`` guard keeps
+concurrent runs from racing. An item below ``ALPHAVANTAGE_MIN_RELEVANCE`` is dropped after dedup.
+Watchlisted companies named by new events are enqueued for re-scoring (the event trigger), and an
+event at or above ``DEEP_RESEARCH_WAKEUP_SIGNIFICANCE`` wakes the autonomous researcher (signal
+convergence).
 """
 
 from __future__ import annotations
 
-import math
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 
-from app.agents.researcher import get_researcher
 from app.config import (
+    ALPHAVANTAGE_FETCH_TICKER_DEPTH,
+    ALPHAVANTAGE_MIN_RELEVANCE,
     DEDUP_LOOKBACK_DAYS,
-    DEDUP_SIMILARITY_THRESHOLD,
     DEEP_RESEARCH_WAKEUP_SIGNIFICANCE,
-    ROUTE_SIMILARITY_THRESHOLD,
     WORLD_GEOPOLITICS_KEYWORDS,
     WORLD_MACRO_KEYWORDS,
 )
 from app.db.enums import CoverageTier, NewsDomain
-from app.db.models.companies import Industry
 from app.db.models.news import NewsEvent
-from app.utils import classify_domain
+from app.utils import classify_domain, matches_keywords
 from app.db.session import SessionLocal, readonly_session
-from app.providers.embeddings import get_embeddings_provider
-from app.providers.news import get_news_provider
-from app.providers.web_news import get_web_news_provider
-from app.tools.registry import TASK_ARTICLE_SUMMARY, TASK_SIGNIFICANCE
+from app.providers.alpha_vantage_news import get_news_provider
 from app.tools.research import ScreenFilters, screen_stocks
 from app.workflows.concurrency import workflow_slot
 from app.workflows.runtime import run_task
@@ -45,13 +44,10 @@ from app.workflows.triggers import WF_NEWS_INGEST
 # How far back to pull on a routine ingest run.
 _LOOKBACK = timedelta(days=1)
 
-# Events classified below this significance floor are discarded — never stored.
-_MIN_SIGNIFICANCE = 0.15
-
 
 @dataclass
 class RawEvent:
-    """Provider-shaped event before AI processing (fields the fetch populates)."""
+    """Provider-shaped event before it's written (fields the fetch populates)."""
 
     url: str
     source: str | None
@@ -59,17 +55,23 @@ class RawEvent:
     headline: str
     tickers: list[str] = field(default_factory=list)
     company_id: int | None = None
-    # Set from the matched company's industry (free); orphan items are routed by embedding later.
+    # Set from the matched company's industry (free); orphan items stay unrouted (industry_id=None).
     industry_id: int | None = None
+    # Alpha Vantage structure carried into ingest: the API's extractive summary (stored as the
+    # canonical record), its topic-derived domain hint, and its relevance (the ingest filter + the
+    # stored significance).
+    summary: str | None = None
+    domain_hint: str | None = None
+    relevance: float | None = None
 
 
 async def _fetch_events() -> list[RawEvent]:
-    """Pull the general/macro feed plus per-symbol news for the watchlist.
+    """Pull the breadth feed (and optional watchlist depth) from Alpha Vantage.
 
-    Breadth watches the whole market: the general feed always flows (even with an empty
-    watchlist) and significance classification separates signal from noise downstream. The
-    per-symbol depth fetch stays watchlist-only — the deliberate cost boundary. ``company_id``
-    resolves against every tracked company (any active tier), so a macro item naming a
+    Breadth watches the whole market in one topic-spanning request; each article's
+    ``ticker_sentiment`` resolves watchlisted names, so depth normally needs no second call. A
+    dedicated ticker request is made only when ``ALPHAVANTAGE_FETCH_TICKER_DEPTH`` is on (paid keys).
+    ``company_id`` resolves against every tracked company (any active tier), so a macro item naming a
     discovered mega-cap still lands on its page."""
     async with readonly_session() as session:
         tracked = await screen_stocks(session, filters=ScreenFilters(limit=1000))
@@ -79,17 +81,15 @@ async def _fetch_events() -> list[RawEvent]:
 
     since = datetime.now(timezone.utc) - _LOOKBACK
     provider = get_news_provider()
-    items = await provider.fetch_general_news(since=since)
-    if watchlist:
-        items += await provider.fetch_events(watchlist, since=since)
-    # Second breadth source: generic web/RSS feeds. Same RawNewsItem shape; cross-source duplicates
-    # collapse downstream via URL + semantic dedup, so the two sources just compose.
-    items += await get_web_news_provider().fetch(since=since)
+    items = await provider.fetch_breadth(since=since)
+    if ALPHAVANTAGE_FETCH_TICKER_DEPTH and watchlist:
+        items += await provider.fetch_for_tickers(watchlist, since=since)
 
     events: list[RawEvent] = []
     for item in items:
-        primary = item.tickers[0] if item.tickers else None
-        company = by_ticker.get(primary) if primary else None
+        # First tracked ticker the article mentions gives it a company home (and that company's
+        # industry); the rest stay on the row's ticker list.
+        company = next((by_ticker[t] for t in item.tickers if t in by_ticker), None)
         events.append(
             RawEvent(
                 url=item.url,
@@ -99,6 +99,9 @@ async def _fetch_events() -> list[RawEvent]:
                 tickers=item.tickers,
                 company_id=company.company_id if company else None,
                 industry_id=company.industry_id if company else None,
+                summary=item.summary,
+                domain_hint=item.domain_hint,
+                relevance=item.relevance,
             )
         )
     return events
@@ -114,32 +117,10 @@ def _norm_headline(headline: str) -> str:
     return _NON_ALNUM.sub(" ", headline.casefold()).strip()
 
 
-def _cosine(a: list[float], b: list[float]) -> float:
-    """Plain cosine similarity. Mirrors pgvector's ``cosine_distance`` (1 - this) so the in-Python
-    gate and the SQL semantic-search tools rank the same way."""
-    dot = sum(x * y for x, y in zip(a, b))
-    na = math.sqrt(sum(x * x for x in a))
-    nb = math.sqrt(sum(y * y for y in b))
-    if na == 0.0 or nb == 0.0:
-        return 0.0
-    return dot / (na * nb)
-
-
-def _max_similarity(
-    vector: list[float], model: str, pool: list[tuple[list[float], str]]
-) -> float:
-    """Top-1 cosine of ``vector`` against every same-model embedding in ``pool`` (0.0 if none)."""
-    best = 0.0
-    for vec, mdl in pool:
-        if mdl == model:
-            best = max(best, _cosine(vector, vec))
-    return best
-
-
 def _dedupe_batch(events: list[RawEvent]) -> list[RawEvent]:
-    """Drop in-batch repeats before any AI spend, keeping the first occurrence. Catches both URL
-    repeats (the per-symbol fetch returns one article per related ticker) and the same story under
-    one URL but reprinted by several outlets (matched on the normalized headline)."""
+    """Drop in-batch repeats, keeping the first occurrence. Catches both URL repeats (the per-symbol
+    fetch returns one article per related ticker) and the same story under one URL but reprinted by
+    several outlets (matched on the normalized headline)."""
     seen_urls: set[str] = set()
     seen_headlines: set[str] = set()
     unique: list[RawEvent] = []
@@ -155,7 +136,7 @@ def _dedupe_batch(events: list[RawEvent]) -> list[RawEvent]:
 
 
 async def _existing_urls(urls: list[str]) -> set[str]:
-    """URLs already stored — re-ingest skips them before any AI spend."""
+    """URLs already stored — re-ingest skips them before the row is written."""
     if not urls:
         return set()
     async with readonly_session() as session:
@@ -165,8 +146,8 @@ async def _existing_urls(urls: list[str]) -> set[str]:
 
 async def _existing_headlines() -> set[str]:
     """Normalized headlines of recently-stored events — the lexical gate against the DB. Bounded to
-    the dedup window so the same story re-crawled within a few days is dropped before AI spend, but
-    a genuinely recurring topic weeks later is not."""
+    the dedup window so the same story re-crawled within a few days is dropped, but a genuinely
+    recurring topic weeks later is not."""
     cutoff = datetime.now(timezone.utc) - timedelta(days=DEDUP_LOOKBACK_DAYS)
     async with readonly_session() as session:
         rows = await session.execute(
@@ -175,58 +156,21 @@ async def _existing_headlines() -> set[str]:
         return {_norm_headline(h) for h in rows.scalars() if h and _norm_headline(h)}
 
 
-async def _recent_embeddings() -> list[tuple[list[float], str]]:
-    """Recent stored summary embeddings (vector, model) for the semantic dedup gate — reused for
-    every candidate this run, so the cosine scan is in memory, not a query per event."""
-    cutoff = datetime.now(timezone.utc) - timedelta(days=DEDUP_LOOKBACK_DAYS)
-    async with readonly_session() as session:
-        rows = await session.execute(
-            select(NewsEvent.embedding, NewsEvent.embedding_model)
-            .where(NewsEvent.embedding.is_not(None))
-            .where(NewsEvent.published_at >= cutoff)
-        )
-        return [(list(vec), model) for vec, model in rows.all()]
-
-
-async def _industry_embeddings() -> list[tuple[int, list[float], str]]:
-    """Active industries with an embedding (id, vector, model) — the routing targets for orphan
-    macro news. Loaded once per run; empty until the boot backfill has embedded them."""
-    async with readonly_session() as session:
-        rows = await session.execute(
-            select(Industry.id, Industry.embedding, Industry.embedding_model)
-            .where(Industry.is_active.is_(True))
-            .where(Industry.embedding.is_not(None))
-        )
-        return [(ind_id, list(vec), model) for ind_id, vec, model in rows.all()]
-
-
-def _route_industry(
-    vector: list[float], model: str, industries: list[tuple[int, list[float], str]]
-) -> int | None:
-    """The closest industry by cosine, or ``None`` if nothing clears ``ROUTE_SIMILARITY_THRESHOLD``
-    (better unrouted than forced into a poor fit). Only same-model embeddings are comparable."""
-    best_id: int | None = None
-    best_sim = ROUTE_SIMILARITY_THRESHOLD
-    for ind_id, vec, mdl in industries:
-        if mdl != model:
-            continue
-        sim = _cosine(vector, vec)
-        if sim >= best_sim:
-            best_sim = sim
-            best_id = ind_id
-    return best_id
-
-
-async def _summarize(event: RawEvent):
-    """Researcher condenses the article into the canonical summary."""
-    return await get_researcher().run_task(TASK_ARTICLE_SUMMARY, inputs={"event": event})
-
-
-async def _classify_significance(event: RawEvent, summary: str):
-    """Researcher classifies significance (0-1) and surveillance domain from the event + summary.
-    Returns the full ``SignificanceOut`` (``.significance`` + optional ``.domain``)."""
-    return await get_researcher().run_task(
-        TASK_SIGNIFICANCE, inputs={"event": event, "summary": summary}
+def _resolve_domain(event: RawEvent) -> str:
+    """Pick a surveillance domain: explicit geopolitics keywords first (so a sanctions/tariff item
+    AV tagged ``economy_macro`` still lands in geopolitics), then Alpha Vantage's topic hint, then the
+    deterministic keyword router as a final fallback."""
+    text = f"{event.headline} {event.summary or ''}"
+    if matches_keywords(text, WORLD_GEOPOLITICS_KEYWORDS):
+        return "geopolitics"
+    if event.domain_hint:
+        return event.domain_hint
+    return classify_domain(
+        text,
+        has_company=event.company_id is not None,
+        has_industry=event.industry_id is not None,
+        geopolitics_keywords=WORLD_GEOPOLITICS_KEYWORDS,
+        macro_keywords=WORLD_MACRO_KEYWORDS,
     )
 
 
@@ -245,17 +189,17 @@ async def _wakeup_deep_research() -> dict:
 
 
 async def run() -> None:
-    # One ingest at a time: the hourly job and the digest's inline call would otherwise race
+    # One ingest at a time: the scheduled job and the digest's inline call would otherwise race
     # past the URL dedup and collide on the unique constraint. Skips write no task row; the
     # concurrent run does the same work.
     async with workflow_slot(WF_NEWS_INGEST) as acquired:
         if not acquired:
             return
 
-        embeddings = get_embeddings_provider()
         async with run_task(WF_NEWS_INGEST) as task:
             # 1. Pull raw events, then run the lexical dedup gate (in-batch + already-stored URLs and
-            #    normalized headlines) before any AI spend.
+            #    normalized headlines). Alpha Vantage's structured tickers/topics make a semantic
+            #    (embedding) dedup pass unnecessary — reworded reprints share the headline key.
             raw = await _fetch_events()
             task.count("fetched", len(raw))
             unique = _dedupe_batch(raw)
@@ -268,71 +212,25 @@ async def run() -> None:
             ]
             task.count("deduped", len(raw) - len(events))
 
-            # Semantic dedup gate state: recent stored vectors (loaded once) plus the vectors of
-            # rows accepted this run (still unflushed). The same story rewritten by another outlet
-            # has a near-identical summary even when URL and headline differ.
-            recent_vectors = await _recent_embeddings()
-            accepted_vectors: list[tuple[list[float], str]] = []
-
-            # Routing targets: industry embeddings, loaded once. Orphan macro items (no company) are
-            # routed to their closest industry by the same summary embedding — no LLM, no extra embed.
-            industry_vectors = await _industry_embeddings()
+            # 1b. Relevance filter — trust Alpha Vantage's scoring instead of an LLM importance call.
+            #     Drop low-relevance items here, before anything is written.
+            before_relevance = len(events)
+            events = [e for e in events if (e.relevance or 0.0) >= ALPHAVANTAGE_MIN_RELEVANCE]
+            task.count("dropped_low_relevance", before_relevance - len(events))
 
             touched: set[int] = set()
             wake = False
             async with SessionLocal() as session:
                 for event in events:
-                    # 2. Summarize + classify (significance + domain). — researcher
-                    summary_out = await _summarize(event)
-                    sig_out = await _classify_significance(event, summary_out.summary)
-                    significance = sig_out.significance
-
-                    # 3. Drop below-threshold events (never stored) — and never embed sub-floor
-                    #    noise, protecting the Voyage budget.
-                    if significance < _MIN_SIGNIFICANCE:
-                        task.count("dropped")
-                        continue
-
-                    # 4. Embed the summary. — Voyage
-                    embedded = await embeddings.embed_query(summary_out.summary)
-
-                    # 4b. Semantic dedup gate: top-1 cosine over recent + this-run vectors. A
-                    #     near-duplicate is dropped (counted, not written) so downstream synthesis
-                    #     pays no tokens for it. Reuses the embedding already computed — no extra call.
-                    similarity = max(
-                        _max_similarity(embedded.vector, embedded.model, recent_vectors),
-                        _max_similarity(embedded.vector, embedded.model, accepted_vectors),
-                    )
-                    if similarity >= DEDUP_SIMILARITY_THRESHOLD:
-                        task.count("deduped_semantic")
-                        continue
-                    accepted_vectors.append((embedded.vector, embedded.model))
-
-                    # 4c. Give the event an industry home. A company match inherits the company's
-                    #     industry for free; an orphan macro item is routed by embedding similarity.
-                    industry_id = event.industry_id
-                    if industry_id is None and event.company_id is None:
-                        industry_id = _route_industry(
-                            embedded.vector, embedded.model, industry_vectors
-                        )
-                        if industry_id is not None:
-                            task.count("routed")
-
-                    # 4d. Surveillance domain: the classifier's call, falling back to the
-                    #     deterministic keyword router when it abstained.
-                    domain_key = sig_out.domain or classify_domain(
-                        f"{event.headline} {summary_out.summary}",
-                        has_company=event.company_id is not None,
-                        has_industry=industry_id is not None,
-                        geopolitics_keywords=WORLD_GEOPOLITICS_KEYWORDS,
-                        macro_keywords=WORLD_MACRO_KEYWORDS,
-                    )
-
-                    # 5. Write the event row (summary canonical, embedding carries its model). — write
+                    # 2. File the event: AV's summary is canonical, its relevance is the significance,
+                    #    and the domain is resolved keyword-geopolitics-first → AV hint → router. No
+                    #    LLM, no embedding — synthesis happens per-section, not per-article.
+                    significance = event.relevance or 0.0
+                    domain_key = _resolve_domain(event)
                     session.add(
                         NewsEvent(
                             company_id=event.company_id,
-                            industry_id=industry_id,
+                            industry_id=event.industry_id,
                             url=event.url,
                             source=event.source,
                             published_at=event.published_at,
@@ -340,15 +238,13 @@ async def run() -> None:
                             tickers=event.tickers,
                             significance=significance,
                             domain=NewsDomain(domain_key),
-                            summary=summary_out.summary,
-                            embedding=embedded.vector,
-                            embedding_model=embedded.model,
+                            summary=event.summary,
                         )
                     )
                     # Commit per event so a long sweep is restart-safe: an interrupted run keeps
                     # every event it had already processed (the URL-unique constraint keeps a
                     # re-run idempotent), and /world populates progressively instead of all-or-
-                    # nothing at the end. The accepted-vector dedup pool is in-memory, unaffected.
+                    # nothing at the end.
                     await session.commit()
                     if event.company_id is not None:
                         touched.add(event.company_id)
@@ -356,11 +252,11 @@ async def run() -> None:
                         wake = True
                     task.count("written")
 
-            # 6. Enqueue re-scoring for affected companies. — event trigger
+            # 3. Enqueue re-scoring for affected companies. — event trigger
             if touched:
                 await _enqueue_rescore(touched)
 
-            # 7. A material event clears the wakeup bar: call the researcher back, after the
+            # 4. A material event clears the wakeup bar: call the researcher back, after the
             #    re-score so the session sees fresh scores. — signal-convergence trigger
             if wake:
                 await _wakeup_deep_research()

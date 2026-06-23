@@ -1,15 +1,15 @@
 """Workflows: orchestrated pipelines + the runtime they execute under.
 
 The **pipelines** live in subpackages mirroring the system's three aspects — ``research/``
-(news_ingest, deep_research, sector_research), ``analysis/`` (company_rescore,
-prose_regeneration, significance_recheck), ``message/`` (daily_digest, market_pulse). This
+(news_ingest, deep_research, section_synthesis), ``analysis/`` (company_rescore,
+prose_regeneration), ``message/`` (daily_digest, market_pulse). This
 package root holds what every pipeline shares:
 
 - ``runtime`` — ``run_task`` (tracked ``tasks`` row; failures visible/re-runnable) + ``with_retry``.
 - ``concurrency`` — ``company_lock``, bounded cross-company fan-out, ``workflow_slot``.
 - ``triggers`` — the trigger taxonomy/registry; ``app.scheduler`` consumes the scheduled subset.
 - ``registry`` — ``WF_*`` identifier -> ``run`` callable map.
-- ``digest_types`` — shapes shared between sector_research and daily_digest.
+- ``digest_types`` — shapes shared between section_synthesis and daily_digest.
 
 Per STRUCTURE.md import direction, ``workflows/`` may import ``agents/``, ``tools/``,
 ``providers/``, ``db/``; ``scheduler/`` imports ``workflows/`` (not the reverse).

@@ -1,7 +1,7 @@
 """Daily research & digest pipeline — the detailed reading list (email + platform).
 
-Orchestrates ingest -> refresh scores -> sector/industry research, then ranks events and
-assembles the reading list: the industry sections come back from ``sector_research`` and the
+Orchestrates ingest -> refresh scores -> per-section synthesis, then ranks events and
+assembles the reading list: the industry sections come back from ``section_synthesis`` and the
 researcher adds the top-of-digest synthesis.
 
 The digest is **not** its own table. The assembled list is written as one ``analysis`` row of
@@ -31,11 +31,12 @@ from app.workflows.triggers import WF_DAILY_DIGEST
 
 async def _refresh() -> list[DigestSection]:
     from app.workflows.analysis import company_rescore
-    from app.workflows.research import news_ingest, sector_research
+    from app.workflows.research import news_ingest, section_synthesis
 
     await news_ingest.run()
     await company_rescore.run()
-    return await sector_research.run()
+    # Per-section synthesis returns the per-critical-industry sections for the digest body.
+    return await section_synthesis.run()
 
 
 async def _user_channels() -> UserChannels:

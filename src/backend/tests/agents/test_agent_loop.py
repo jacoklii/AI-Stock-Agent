@@ -12,7 +12,7 @@ import json
 from types import SimpleNamespace
 
 from app.agents.researcher import agent as agent_mod
-from app.tools.registry import TASK_ARTICLE_SUMMARY, TASK_DEEP_RESEARCH, TASK_FOLLOWUP
+from app.tools.registry import TASK_DEEP_RESEARCH, TASK_FOLLOWUP, TASK_SECTION_SNAPSHOT
 
 
 class _Block:
@@ -113,8 +113,10 @@ async def test_server_web_tools_attached_only_for_web_tasks() -> None:
     types = {t.get("type") for t in llm.calls[0]["tools"]}
     assert {"web_search_20260209", "web_fetch_20260209"} <= types
 
-    llm = _ScriptedLLM(_Resp(_Block(f"submit_{TASK_ARTICLE_SUMMARY}", {"summary": "s"})))
-    await agent_mod.Researcher(llm=llm).run_task(TASK_ARTICLE_SUMMARY, inputs={"text": "t"})
+    llm = _ScriptedLLM(
+        _Resp(_Block(f"submit_{TASK_SECTION_SNAPSHOT}", {"snapshot": "s", "key_tickers": []}))
+    )
+    await agent_mod.Researcher(llm=llm).run_task(TASK_SECTION_SNAPSHOT, inputs={"text": "t"})
     assert all(t.get("type") is None for t in llm.calls[0]["tools"])
 
 

@@ -120,30 +120,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/companies/{company_id}/related": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Company Related
-         * @description Articles across the market most related to this company — semantic discovery, zero LLM.
-         *
-         *     Query vector is the company's most-significant recent embedded event; we cosine-rank all events
-         *     and drop this company's own, so the panel surfaces what's happening *elsewhere* on the same
-         *     theme. Empty when the company has no embedded events yet.
-         */
-        get: operations["company_related_companies__company_id__related_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/companies/{company_id}/watchlist": {
         parameters: {
             query?: never;
@@ -1086,33 +1062,6 @@ export interface components {
             source_event_ids: number[];
         };
         /**
-         * RelatedArticleOut
-         * @description An article surfaced by semantic relatedness, carrying its cosine ``similarity`` (1 - dist).
-         */
-        RelatedArticleOut: {
-            /** News Event Id */
-            news_event_id: number;
-            /** Url */
-            url: string;
-            /** Source */
-            source: string | null;
-            /**
-             * Published At
-             * Format: date-time
-             */
-            published_at: string;
-            /** Headline */
-            headline: string;
-            /** Summary */
-            summary: string;
-            /** Significance */
-            significance: number;
-            /** Tickers */
-            tickers: string[];
-            /** Similarity */
-            similarity: number;
-        };
-        /**
          * RelatedSessionOut
          * @description A past research session surfaced as related to another, with its cosine ``similarity``.
          */
@@ -1366,6 +1315,10 @@ export interface components {
             key: "geopolitics" | "macro" | "industry" | "market";
             /** Title */
             title: string;
+            /** Summary */
+            summary?: string | null;
+            /** Key Tickers */
+            key_tickers?: string[];
             /** Items */
             items?: components["schemas"]["WorldItem"][];
         };
@@ -1572,39 +1525,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CompanyDetail"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    company_related_companies__company_id__related_get: {
-        parameters: {
-            query?: {
-                limit?: number;
-            };
-            header?: never;
-            path: {
-                company_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RelatedArticleOut"][];
                 };
             };
             /** @description Validation Error */

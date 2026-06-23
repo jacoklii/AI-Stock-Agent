@@ -23,10 +23,9 @@ WF_DAILY_DIGEST = "daily_research_digest"
 WF_MARKET_PULSE = "market_pulse"
 WF_MARKET_DATA_INGEST = "market_data_ingest"
 WF_NEWS_INGEST = "news_ingest"
-WF_SECTOR_RESEARCH = "sector_research"
+WF_SECTION_SYNTHESIS = "section_synthesis"
 WF_RESCORE = "company_rescore"
 WF_PROSE_REGEN = "prose_regeneration"
-WF_SIGNIFICANCE_RECHECK = "significance_recheck"
 WF_DEEP_RESEARCH = "deep_research"
 WF_FOLLOWUP = "followup"
 
@@ -44,7 +43,9 @@ class Trigger:
 
     ``cron`` is set only for ``scheduled`` triggers. ``source`` names the event/metric for
     ``event`` / ``threshold`` triggers. ``params`` carries fixed invocation arguments (e.g. the
-    pulse ``slot``) the workflow receives when this trigger fires.
+    pulse ``slot``) the workflow receives when this trigger fires. ``timezone`` is the cron's
+    reference zone — UTC for every job except the AV news sweeps, which run on a US-market
+    clock (``America/New_York``) so the day/night cadence tracks trading hours across DST.
     """
 
     name: str
@@ -54,6 +55,7 @@ class Trigger:
     cron: str | None = None
     source: str | None = None
     params: dict[str, str] = field(default_factory=dict)
+    timezone: str = "UTC"
 
 
 TRIGGERS: dict[str, Trigger] = {}
@@ -111,18 +113,31 @@ register_trigger(Trigger(
     params={"slot": "close"},
 ))
 register_trigger(Trigger(
-    name="sector_research_daily",
+    name="section_synthesis_daily",
     kind=TriggerKind.scheduled,
-    workflow=WF_SECTOR_RESEARCH,
-    description="Aggregate sector scores, surface movers; feeds digest sections.",
-    cron="0 10 * * *",
+    workflow=WF_SECTION_SYNTHESIS,
+    description="Per-section synthesis: write each surveillance domain + critical industry's snapshot "
+    "from its events. A few times/day (LLM cost, not AV); feeds /world and the digest.",
+    cron="0 10,14,18 * * *",
 ))
+# AV free tier is ~25 calls/day. Concentrate the budget in US market hours and go sparse
+# overnight: 14 daytime + 4 overnight = 18 calls/day, on an ET clock so the boundary tracks
+# the trading session across DST.
 register_trigger(Trigger(
-    name="news_ingest_hourly",
+    name="news_ingest_day",
     kind=TriggerKind.scheduled,
     workflow=WF_NEWS_INGEST,
-    description="Continuous breadth: pull + classify news around the clock; URL dedup keeps re-fetch cheap.",
-    cron="0 * * * *",
+    description="Daytime breadth (06:00-19:00 ET, hourly): pull + classify AV news; URL dedup keeps re-fetch cheap.",
+    cron="0 6-19 * * *",
+    timezone="America/New_York",
+))
+register_trigger(Trigger(
+    name="news_ingest_night",
+    kind=TriggerKind.scheduled,
+    workflow=WF_NEWS_INGEST,
+    description="Overnight breadth (20:00, 23:00, 02:00, 05:00 ET): sparse sweeps to conserve the AV free-tier budget.",
+    cron="0 20,23,2,5 * * *",
+    timezone="America/New_York",
 ))
 register_trigger(Trigger(
     name="market_data_daily",
@@ -130,13 +145,6 @@ register_trigger(Trigger(
     workflow=WF_MARKET_DATA_INGEST,
     description="Daily: refresh stored financials + daily prices for watchlist + critical names (the quantitative surface).",
     cron="30 22 * * 1-5",
-))
-register_trigger(Trigger(
-    name="significance_recheck_daily",
-    kind=TriggerKind.scheduled,
-    workflow=WF_SIGNIFICANCE_RECHECK,
-    description="After the close, re-check low-significance events against the day's price reaction.",
-    cron="0 21 * * 1-5",
 ))
 register_trigger(Trigger(
     name="news_ingested",

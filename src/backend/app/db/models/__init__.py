@@ -14,6 +14,7 @@ from app.db.models.companies import Company, Industry
 from app.db.models.delivery import Notification
 from app.db.models.market_data import CatalystCalendar, Financial, Price
 from app.db.models.news import NewsEvent
+from app.db.models.section import SectionSummary
 from app.db.models.state import ResearchState
 from app.db.models.tasks import Task
 from app.db.models.user import UserPreferences
@@ -29,6 +30,8 @@ __all__ = [
     "CatalystCalendar",
     # news
     "NewsEvent",
+    # section synthesis
+    "SectionSummary",
     # analysis
     "Fundamental",
     "Sentimental",

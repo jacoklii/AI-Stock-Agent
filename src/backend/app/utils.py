@@ -34,6 +34,14 @@ def derive_horizon(
     return "now" if recent and significance >= min_significance else "building"
 
 
+def matches_keywords(text: str, keywords: tuple[str, ...]) -> bool:
+    """True if any keyword appears in ``text`` (case-insensitive). Lets ingest run the
+    geopolitics check ahead of Alpha Vantage's topic hint so an explicitly geopolitical item
+    (sanctions, strait, tariff) lands in geopolitics even when AV tagged it ``economy_macro``."""
+    t = text.lower()
+    return any(k in t for k in keywords)
+
+
 def classify_domain(
     text: str,
     *,

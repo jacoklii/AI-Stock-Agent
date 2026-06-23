@@ -35,13 +35,11 @@ from app.providers.errors import ProviderError
 from app.providers.llm import LLMProvider, get_llm_provider
 from app.tools.invoke import invoke_tool, tool_json_schema
 from app.tools.registry import (
-    TASK_ARTICLE_SUMMARY,
     TASK_COMPANY_PROSE,
     TASK_DEEP_RESEARCH,
     TASK_FOLLOWUP,
     TASK_PULSE_SNAPSHOT,
     TASK_SECTION_SNAPSHOT,
-    TASK_SIGNIFICANCE,
     TASK_TOP_SNAPSHOT,
     get_tools_for,
 )
@@ -145,12 +143,6 @@ class TaskSpec:
 
 # Model choice mirrors the architecture: Haiku for high-volume ingest, Sonnet/Opus for synthesis.
 TASKS: dict[str, TaskSpec] = {
-    TASK_ARTICLE_SUMMARY: TaskSpec(
-        TASK_ARTICLE_SUMMARY, "prompt_article.md", MODEL_HAIKU, schemas.ArticleSummaryOut
-    ),
-    TASK_SIGNIFICANCE: TaskSpec(
-        TASK_SIGNIFICANCE, "prompt_significance.md", MODEL_HAIKU, schemas.SignificanceOut
-    ),
     TASK_PULSE_SNAPSHOT: TaskSpec(
         TASK_PULSE_SNAPSHOT, "prompt_pulse.md", MODEL_HAIKU, schemas.SnapshotOut
     ),

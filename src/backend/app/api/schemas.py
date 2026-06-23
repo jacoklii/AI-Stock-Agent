@@ -29,12 +29,6 @@ class ArticleOut(BaseModel):
     tickers: list[str]
 
 
-class RelatedArticleOut(ArticleOut):
-    """An article surfaced by semantic relatedness, carrying its cosine ``similarity`` (1 - dist)."""
-
-    similarity: float
-
-
 class RelatedSessionOut(BaseModel):
     """A past research session surfaced as related to another, with its cosine ``similarity``."""
 
@@ -102,6 +96,9 @@ class WorldItem(BaseModel):
 class WorldDomain(BaseModel):
     key: WorldDomainKey
     title: str
+    # The agent's per-section synthesis (from section_summary); null until it has run for this domain.
+    summary: str | None = None
+    key_tickers: list[str] = Field(default_factory=list)
     items: list[WorldItem] = Field(default_factory=list)
 
 

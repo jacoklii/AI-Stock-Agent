@@ -281,19 +281,6 @@ export function useCompanyDetail(companyId: number) {
   });
 }
 
-export function useCompanyRelated(companyId: number) {
-  return useQuery({
-    queryKey: ["companies", "detail", companyId, "related"],
-    queryFn: async () =>
-      unwrap(
-        await api.GET("/companies/{company_id}/related", {
-          params: { path: { company_id: companyId } },
-        }),
-      ),
-    staleTime: 60_000,
-  });
-}
-
 export function useWatchlistAction(companyId: number) {
   const qc = useQueryClient();
   return useMutation({

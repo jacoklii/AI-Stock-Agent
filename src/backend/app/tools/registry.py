@@ -23,8 +23,6 @@ from dataclasses import dataclass, field
 # Task identifiers. These name the agent steps that will exist once the researcher agent is
 # built; the allowlist is keyed by them. Kept as plain strings (not an enum) because the agent
 # owns the authoritative task list and will extend it — the registry only needs to match names.
-TASK_ARTICLE_SUMMARY = "article_summary"
-TASK_SIGNIFICANCE = "significance_classification"
 TASK_SECTION_SNAPSHOT = "section_snapshot"
 TASK_COMPANY_PROSE = "company_prose"
 TASK_PULSE_SNAPSHOT = "pulse_snapshot"

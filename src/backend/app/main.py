@@ -56,20 +56,6 @@ async def _index_user_interests() -> None:
         logger.warning("interest index skipped (database/embeddings unavailable?)", exc_info=True)
 
 
-async def _index_industries() -> None:
-    """Embed the industry vocabulary so ``news_ingest`` can route orphan macro news to an industry.
-    Embeddings only, idempotent, best-effort — same off-the-boot-path discipline as the interest
-    corpus so a Voyage hiccup never delays startup."""
-    try:
-        from app.workflows.research import industry_index
-
-        result = await industry_index.run()
-        if result.get("indexed"):
-            logger.info("industry index: %s", result)
-    except Exception:
-        logger.warning("industry index skipped (database/embeddings unavailable?)", exc_info=True)
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Sweep tasks orphaned by a previous crash/restart so the activity feed stays truthful.
@@ -94,13 +80,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     except Exception:
         logger.warning("default bootstrap skipped (database unavailable?)", exc_info=True)
 
-    # Seed the user-interest corpus and embed the industry vocabulary in the background (after
-    # defaults exist, so the declared lines and seeded industries are there to index). Fire-and-
-    # forget: startup never waits on embeddings.
-    for coro in (_index_user_interests(), _index_industries()):
-        task = asyncio.create_task(coro)
-        _boot_tasks.add(task)
-        task.add_done_callback(_boot_tasks.discard)
+    # Seed the user-interest corpus in the background (after defaults exist, so the declared lines
+    # are there to index). Fire-and-forget: startup never waits on embeddings.
+    task = asyncio.create_task(_index_user_interests())
+    _boot_tasks.add(task)
+    task.add_done_callback(_boot_tasks.discard)
 
     # Start breadth automation only when enabled (off in dev/tests). The scheduler fires the
     # scheduled workflows; everything else stays callable on demand from the API.

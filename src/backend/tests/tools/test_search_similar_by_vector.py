@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from app.db.models.news import NewsEvent
+from app.db.models.state import ResearchState
 from app.tools.research import search_similar_by_vector
 
 
@@ -40,7 +40,7 @@ async def test_projects_rows_and_turns_distance_into_similarity() -> None:
     session = _FakeSession(rows)
 
     hits = await search_similar_by_vector(
-        session, NewsEvent, vector=[0.0, 1.0], model_name="voyage-3", k=5
+        session, ResearchState, vector=[0.0, 1.0], model_name="voyage-3", k=5
     )
 
     assert [(row.id, round(sim, 2)) for row, sim in hits] == [(1, 0.9), (2, 0.75)]
@@ -50,6 +50,6 @@ async def test_projects_rows_and_turns_distance_into_similarity() -> None:
 async def test_exclude_id_is_accepted_and_empty_surface_returns_nothing() -> None:
     session = _FakeSession([])
     hits = await search_similar_by_vector(
-        session, NewsEvent, vector=[0.0], model_name="voyage-3", exclude_id=7
+        session, ResearchState, vector=[0.0], model_name="voyage-3", exclude_id=7
     )
     assert hits == []

@@ -138,10 +138,27 @@ function SignalColumn({
 
 function DomainBlock({ domain, onResearch }: { domain: WorldDomain; onResearch: (topic: string) => void }) {
   const items = domain.items ?? [];
-  if (items.length === 0) return null;
+  const tickers = domain.key_tickers ?? [];
+  // Show the block when the agent has synthesized this section or there are swept items under it.
+  if (items.length === 0 && !domain.summary) return null;
   return (
     <section>
       <SectionHead title={domain.title} origin="swept" />
+      {domain.summary && (
+        <div className="mt-2">
+          <div className="flex items-baseline gap-2">
+            <p className="asa-prose">{domain.summary}</p>
+          </div>
+          {tickers.length > 0 && (
+            <p className="mt-1 font-data text-xs" style={{ color: "var(--text-muted)" }}>
+              {tickers.join(" ")}
+            </p>
+          )}
+          <p className="mt-1 terminal-label" style={{ fontSize: "0.625rem" }}>
+            · synthesized by the agent
+          </p>
+        </div>
+      )}
       <ul className="mt-1">
         {items.map((it, i) => (
           <ItemRow key={i} item={it} onResearch={onResearch} />
