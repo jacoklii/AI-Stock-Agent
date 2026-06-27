@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from app.utils import classify_domain, derive_horizon
+from app.utils import classify_domain, derive_horizon, host_of, is_paywalled
 
 _GEO = ("war", "sanction", "strait")
 _MACRO = ("inflation", "the fed", "yield")
@@ -37,3 +37,24 @@ def test_classify_domain_priority() -> None:
     assert classify_domain("Acme beats earnings", has_company=True, has_industry=True, **kw) == "market"
     assert classify_domain("Sector capex rises", has_company=False, has_industry=True, **kw) == "industry"
     assert classify_domain("A global summit convenes", has_company=False, has_industry=False, **kw) == "geopolitics"
+
+
+_BLOCKED = frozenset({"wsj.com", "businessinsider.com"})
+
+
+def test_host_of_strips_scheme_www_and_lowercases() -> None:
+    assert host_of("https://www.WSJ.com/articles/x?y=1") == "wsj.com"
+    assert host_of("http://markets.businessinsider.com/news/a") == "markets.businessinsider.com"
+    assert host_of("not a url") == ""
+
+
+def test_is_paywalled_matches_domain_and_subdomains() -> None:
+    # Exact host and www. variant both match.
+    assert is_paywalled("https://www.wsj.com/x", _BLOCKED)
+    assert is_paywalled("https://wsj.com/x", _BLOCKED)
+    # A subdomain of a blocked outlet matches.
+    assert is_paywalled("https://markets.businessinsider.com/n", _BLOCKED)
+    # A free outlet, an empty/garbage URL, and a lookalike suffix do NOT match.
+    assert not is_paywalled("https://www.reuters.com/markets", _BLOCKED)
+    assert not is_paywalled("", _BLOCKED)
+    assert not is_paywalled("https://notwsj.com/x", _BLOCKED)  # suffix guard: 'notwsj.com' != 'wsj.com'

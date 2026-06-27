@@ -16,7 +16,8 @@ export function SourceChips({ urls }: { urls: string[] }) {
             href={url}
             target="_blank"
             rel="noreferrer"
-            className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs text-neutral-600 hover:bg-blue-50 hover:text-blue-700"
+            className="rounded-full px-2 py-0.5 text-xs hover:underline"
+            style={{ background: "var(--surface-hover)", color: "var(--link)" }}
           >
             {host}
           </a>

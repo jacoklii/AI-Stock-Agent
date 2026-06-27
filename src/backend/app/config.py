@@ -140,15 +140,17 @@ DEEP_RESEARCH_MAX_SESSION_AGE_DAYS = 7
 # matter ahead). The raw score only orders items within a horizon and is never returned for display.
 # The "significance" stored on a news event is Alpha Vantage's relevance score, so these thresholds
 # are tuned to AV's distribution (lower than an LLM 0..1 importance score) — revisit against live data.
-WORLD_NOW_WINDOW_HOURS = 48
+WORLD_NOW_WINDOW_HOURS = 12
 WORLD_NOW_MIN_SIGNIFICANCE = 0.4
 # How many recent significant events the feed scans before grouping into domains.
 WORLD_FEED_LIMIT = 120
 # How many ranked movements the Signals band carries (split across Now / Building).
 WORLD_SIGNALS_LIMIT = 12
-# Freshness shelf-life: week-old items drop off the live feed even if re-crawled fresh. Relevance is
-# already gated once at ingest (ALPHAVANTAGE_MIN_RELEVANCE) — there's no second display floor.
-WORLD_MAX_AGE_HOURS = 168
+# Freshness shelf-life: the live feed is *today's* surveillance, so anything older than a rolling day
+# drops off even if re-crawled — yesterday's recap can't sit at the top as if it were breaking. With
+# the scheduler on, ingest runs hourly, so this window stays continuously fed. Relevance is already
+# gated once at ingest (ALPHAVANTAGE_MIN_RELEVANCE) — there's no second display floor.
+WORLD_MAX_AGE_HOURS = 24
 
 # --- Per-section synthesis ----------------------------------------------------
 # How many recent events feed one section snapshot (the AI's per-section news synthesis). Bounds the
@@ -160,6 +162,36 @@ SECTION_EVENT_LIMIT = 40
 # LLM to re-judge importance: an item whose AV relevance is below this floor is dropped after dedup,
 # before any summarize/embed spend. Raise it for a leaner feed, lower it for more breadth.
 ALPHAVANTAGE_MIN_RELEVANCE = 0.10
+
+
+# --- News accessibility filter (paywall gate) ---------------------------------
+# Article URLs are first-class content (the user clicks through to read the source), so a headline
+# whose source sits behind a hard subscription wall is a dead end — surfaced but unreadable. Ingest
+# drops any event whose outlet is on this blocklist *before write* (the same place the relevance gate
+# sits), so every link in the feed actually opens. The AV extractive summary still rides along in-app
+# as orientation; only the unreadable click-through is removed. Matched on the URL host (and its
+# subdomains) via ``utils.is_paywalled``, so it covers both AV (publisher feed) and GDELT (global
+# feed). Hard paywalls only — metered/mostly-free outlets (Reuters, CNBC, Yahoo, Forbes) stay in;
+# tune this set as outlets change their walls.
+PAYWALLED_SOURCE_DOMAINS: frozenset[str] = frozenset({
+    "wsj.com",              # The Wall Street Journal
+    "bloomberg.com",        # Bloomberg
+    "ft.com",               # Financial Times
+    "barrons.com",          # Barron's
+    "economist.com",        # The Economist
+    "seekingalpha.com",     # Seeking Alpha (now predominantly premium)
+    "investors.com",        # Investor's Business Daily
+    "theinformation.com",   # The Information
+    "nytimes.com",          # The New York Times
+    "washingtonpost.com",   # The Washington Post
+    "businessinsider.com",  # Business Insider / Insider
+    "nikkei.com",           # Nikkei Asia
+    "foreignpolicy.com",    # Foreign Policy (geopolitics)
+    "foreignaffairs.com",   # Foreign Affairs (geopolitics)
+    "thetimes.co.uk",       # The Times (UK)
+    "telegraph.co.uk",      # The Telegraph (UK)
+    "haaretz.com",          # Haaretz
+})
 
 # Thin keyword classifier that routes a stored event into one of the four surveillance domains,
 # in priority order: geopolitics (origin of moves) and macro win on keyword; otherwise a
@@ -224,6 +256,42 @@ ALPHAVANTAGE_TOPIC_DOMAIN: dict[str, str] = {
     "retail_wholesale": "industry",
     "blockchain": "industry",
 }
+
+
+# --- GDELT DOC 2.0 (the geopolitics / global-events source) -------------------
+# GDELT fills the domain Alpha Vantage structurally cannot: AV is financial-only with no geopolitics
+# topic. The DOC 2.0 ArtList endpoint is keyless/public and returns a clean per-article JSON feed
+# (title, url, source domain, language, source country, seen-date) for an arbitrary query. We sweep
+# one fixed geopolitics query each run and converge the results onto the same ingest pipeline AV
+# feeds. Every GDELT article lands in the ``geopolitics`` domain and carries its ``source_country``.
+#
+# Query rules (GDELT DOC): space-separated terms are AND, ``OR`` must be uppercase, multi-word
+# phrases need quotes. Precision over recall: bare polysemous words (war, election, military,
+# conflict) pull local fluff — a mayoral "election", a "military" band concert — so the query is
+# built from **multi-word geopolitics phrases** plus a few unambiguous single terms (tariffs,
+# airstrike, coup, embargo, ceasefire). Keep it to ~12 OR clauses and avoid hyphenated phrases
+# (GDELT's parser chokes on them, returning an empty body).
+GDELT_QUERY = (
+    '("economic sanctions" OR "trade war" OR tariffs OR "armed conflict" OR "military offensive" '
+    'OR airstrike OR ceasefire OR coup OR embargo OR "peace talks" OR "geopolitical tensions" '
+    'OR "diplomatic crisis")'
+)
+# Restrict to English-language sources so the feed stays readable (GDELT is global/multilingual).
+GDELT_SOURCE_LANG = "english"
+# Max articles per sweep (GDELT allows up to 250). Kept modest — the ingest dedup + freshness gates
+# trim further, and one geopolitics sweep shouldn't dominate the feed.
+GDELT_MAX_RECORDS = 75
+# Lookback window for a routine sweep, as a GDELT timespan string (e.g. ``1d`` / ``12h``).
+GDELT_TIMESPAN = "1d"
+# GDELT carries no per-article relevance score (unlike AV). Every kept GDELT event is filed at this
+# significance: above the ingest relevance floor (so it's stored) but below WORLD_NOW_MIN_SIGNIFICANCE
+# and DEEP_RESEARCH_WAKEUP_SIGNIFICANCE — geopolitics is standing context, not a per-name trade trigger.
+GDELT_DEFAULT_SIGNIFICANCE = 0.3
+# GDELT asks keyless callers for ≤ 1 request / 5 seconds and penalizes bursts. A single process-wide
+# limiter paces *every* GDELT call to this minimum spacing (6s leaves margin), so the steady schedule
+# and an on-demand user sweep can never burst into a 429 — concurrent callers queue, they don't
+# collide. This is what keeps spare GDELT headroom for user-bounded sweeps alongside the cron.
+GDELT_MIN_INTERVAL_S = 6.0
 
 
 # --- Fixed constants ----------------------------------------------------------

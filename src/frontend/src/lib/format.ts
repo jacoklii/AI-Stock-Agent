@@ -86,3 +86,28 @@ export function timeAgo(iso: string | null | undefined, now: Date = new Date()):
   const days = Math.floor(hours / 24);
   return `${days}d ago`;
 }
+
+/** Flatten markdown to a clean plain-text snippet for list-row previews (e.g. a research session's
+ *  findings). The full markdown still renders where the agent's prose belongs (via `Prose`); a teaser
+ *  must never leak `**`, `##`, or `[text](url)` syntax. */
+export function plainText(md: string | null | undefined, max = 200): string {
+  if (!md) return "";
+  const text = md
+    .replace(/```[\s\S]*?```/g, " ") // fenced code blocks
+    .replace(/`([^`]+)`/g, "$1") // inline code
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, " ") // images
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1") // links → label
+    .replace(/^\s{0,3}#{1,6}\s+/gm, "") // ATX headings
+    .replace(/^\s{0,3}>\s?/gm, "") // blockquotes
+    .replace(/^\s*[-*+]\s+/gm, "") // bullet markers
+    .replace(/^\s*\d+\.\s+/gm, "") // ordered markers
+    .replace(/^\s*([-*_]\s*){3,}$/gm, " ") // horizontal rules
+    .replace(/\*\*([^*]+)\*\*/g, "$1") // bold
+    .replace(/__([^_]+)__/g, "$1")
+    .replace(/\*([^*]+)\*/g, "$1") // italic
+    .replace(/~~([^~]+)~~/g, "$1") // strikethrough
+    .replace(/[|*_#>`]/g, " ") // any stragglers
+    .replace(/\s+/g, " ") // collapse whitespace + newlines
+    .trim();
+  return text.length > max ? `${text.slice(0, max).trimEnd()}…` : text;
+}

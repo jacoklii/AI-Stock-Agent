@@ -148,6 +148,8 @@ async def session_detail(
                 summary=e.summary,
                 significance=e.significance,
                 tickers=list(e.tickers),
+                domain=e.domain.value if e.domain is not None else None,
+                source_country=e.source_country,
             )
             for e in events
         ]

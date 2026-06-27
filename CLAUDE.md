@@ -9,10 +9,20 @@ Always-on research partner for stock and market intelligence. The agent
 **analyzes** (patterns, signal vs. noise, historical analogs), and 
 **updates** (surfaces findings organized by sector/significance with article URLs as primary content). It never recommends, speculates, or decides — that belongs to the human.
 
+## Data sources
+
+Three external feeds, one wrapper each in `app/providers/` (a swap touches one file). Each owns a slice of the four surveillance domains:
+
+- **yFinance** (`market.py`) — stocks: quotes, daily prices, quarterly financials. The quantitative surface (feeds the quant panels + the agent's `get_financials`/`get_price_history`); not a news domain.
+- **Alpha Vantage** NEWS_SENTIMENT (`alpha_vantage_news.py`) — financial news: **macroeconomics, industry trends, earnings/M&A**. AV's relevance score is the stored `significance`; its summary is stored verbatim as canonical (no per-article LLM, no embedding).
+- **GDELT** (`gdelt.py`) — **geopolitics, global events, geographic mapping, the state of human society**. Fills the domain AV structurally cannot: AV is financial-only and has no geopolitics topic. The geopolitics domain is GDELT-fed, not keyword-proxied off AV.
+
+Domain map: GDELT → `geopolitics` · AV → `macro` / `industry` / `market` · yFinance → quant panels.
+
 ## Hard rules
 
 - AI never recommends buy/sell/hold or makes valuation calls.
-- "Look at this" outputs require ≥ 3 independent substantive inputs. `synthesize_pattern` enforces this.
+- "Look at this" outputs require ≥ 3 independent substantive inputs.
 - AI reads the DB only through predefined, read-only tools — no generated SQL, no arbitrary fetches.
 - Article URLs are first-class content; AI summaries are orientation alongside, never instead.
 - No raw article body text stored — the AI summary is canonical.
@@ -30,7 +40,7 @@ Always-on research partner for stock and market intelligence. The agent
 - Migrations own all DDL. `alembic check` must pass after any model change.
 - Constants in `app/config.py`, never inside `app/` modules; one-off ops scripts go in `scripts/`.
 - `scheduler/` may import `workflows/`, never the reverse.
-- Failures surface in the `jobs` table — no silent partial successes.
+- Failures surface in the `tasks` table — no silent partial successes.
 - Add complexity only when current behavior measurably fails.
 
 ## Commands

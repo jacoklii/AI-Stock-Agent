@@ -551,6 +551,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Events
+         * @description Recent news events (newest first), optionally filtered by ``domain`` / ``source_country``.
+         *
+         *     Reuses ``get_news_events`` so the wire rows match the agent's view exactly; each
+         *     ``NewsEventResult`` (which already carries ``domain`` + ``source_country``) maps straight onto
+         *     ``ArticleOut``.
+         */
+        get: operations["list_events_events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ops/sweep": {
         parameters: {
             query?: never;
@@ -663,6 +687,10 @@ export interface components {
             significance: number;
             /** Tickers */
             tickers: string[];
+            /** Domain */
+            domain?: string | null;
+            /** Source Country */
+            source_country?: string | null;
         };
         /** BriefInstrumentOut */
         BriefInstrumentOut: {
@@ -979,6 +1007,13 @@ export interface components {
             /** Articles */
             articles: components["schemas"]["ArticleOut"][];
         };
+        /**
+         * NewsDomain
+         * @description The surveillance domain a news event belongs to — where the move originates. Values match
+         *     the ``WorldDomainKey`` literal in ``app.utils`` so the classifier output maps straight onto it.
+         * @enum {string}
+         */
+        NewsDomain: "geopolitics" | "macro" | "industry" | "market";
         /** OpsRunResponse */
         OpsRunResponse: {
             /** Workflow */
@@ -1319,6 +1354,8 @@ export interface components {
             summary?: string | null;
             /** Key Tickers */
             key_tickers?: string[];
+            /** Source Event Ids */
+            source_event_ids?: number[];
             /** Items */
             items?: components["schemas"]["WorldItem"][];
         };
@@ -1346,6 +1383,8 @@ export interface components {
             article_refs?: number[];
             /** Tickers */
             tickers?: string[];
+            /** Source Country */
+            source_country?: string | null;
         };
         /**
          * WorldSignal
@@ -2243,6 +2282,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorldView"];
+                };
+            };
+        };
+    };
+    list_events_events_get: {
+        parameters: {
+            query?: {
+                domain?: components["schemas"]["NewsDomain"] | null;
+                source_country?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArticleOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

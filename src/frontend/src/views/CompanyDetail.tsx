@@ -83,7 +83,7 @@ export function CompanyDetail({
                       type="button"
                       onClick={() => onResearch(`${c.ticker} (${c.name}) — `)}
                       className="text-xs font-medium hover:underline"
-                      style={{ color: "var(--link)" }}
+                      style={{ color: "var(--accent)" }}
                     >
                       research this name →
                     </button>
@@ -171,7 +171,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 function ProseBlock({ p }: { p: ProseOut }) {
   return (
     <div>
-      <Prose>{p.body}</Prose>
+      <Prose serif>{p.body}</Prose>
       <div className="mt-1">
         <FreshnessStamp iso={p.generated_at} label="written" />
       </div>
@@ -190,7 +190,7 @@ function Financials({ rows }: { rows: FinancialOut[] }) {
   const cols: { label: string; pick: (r: FinancialOut) => string }[] = [
     { label: "Revenue", pick: (r) => fmtBig(r.revenue) },
     { label: "EBITDA", pick: (r) => fmtBig(r.ebitda) },
-    { label: "Net income", pick: (r) => fmtBig(r.net_income) },
+    { label: "Net inc", pick: (r) => fmtBig(r.net_income) },
     { label: "EPS", pick: (r) => fmtPrice(r.eps) },
   ];
   return (
@@ -203,24 +203,24 @@ function Financials({ rows }: { rows: FinancialOut[] }) {
         </div>
       )}
       <div className="overflow-x-auto">
-        <table className="w-full border-collapse font-data text-xs">
+        <table className="w-full border-collapse font-data text-[11px]">
           <thead>
             <tr style={{ color: "var(--text-dim)" }}>
-              <th className="py-1 pr-3 text-left font-medium">Period</th>
+              <th className="py-1 pr-2 text-left font-medium">Period</th>
               {cols.map((col) => (
-                <th key={col.label} className="py-1 pl-3 text-right font-medium">{col.label}</th>
+                <th key={col.label} className="py-1 pl-2 text-right font-medium">{col.label}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {rows.map((r, i) => (
               <tr key={`${r.period_end}-${r.period_type}-${i}`} style={{ borderTop: "1px solid var(--border-default)" }}>
-                <td className="py-1 pr-3 whitespace-nowrap" style={{ color: "var(--text-body)" }}>
+                <td className="py-1 pr-2 whitespace-nowrap" style={{ color: "var(--text-body)" }}>
                   {r.period_end}
                   <span className="ml-1" style={{ color: "var(--text-dim)" }}>{r.period_type === "quarterly" ? "Q" : "FY"}</span>
                 </td>
                 {cols.map((col) => (
-                  <td key={col.label} className="tnum py-1 pl-3 text-right" style={{ color: "var(--text-strong)" }}>
+                  <td key={col.label} className="tnum py-1 pl-2 text-right" style={{ color: "var(--text-strong)" }}>
                     {col.pick(r)}
                   </td>
                 ))}

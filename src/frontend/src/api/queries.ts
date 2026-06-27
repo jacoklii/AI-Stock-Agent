@@ -37,6 +37,7 @@ export function useOpsSweep() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["activity"] });
       void qc.invalidateQueries({ queryKey: ["world"] });
+      void qc.invalidateQueries({ queryKey: ["events"] });
       void qc.invalidateQueries({ queryKey: ["inbox"] });
     },
   });
@@ -48,6 +49,22 @@ export function useWorld() {
   return useQuery({
     queryKey: ["world"],
     queryFn: async () => unwrap(await api.GET("/world")),
+    refetchInterval: 30_000,
+  });
+}
+
+// --- Flat events feed (News & events surface) --------------------------------------
+// The cross-domain article stream behind the left "News & events" panel. domain/country are
+// optional filters; the surface groups the flat result into per-domain sections client-side.
+
+export function useEvents(filters?: { domain?: string; country?: string }) {
+  const query = {
+    ...(filters?.domain ? { domain: filters.domain as never } : {}),
+    ...(filters?.country ? { source_country: filters.country } : {}),
+  };
+  return useQuery({
+    queryKey: ["events", filters?.domain ?? "all", filters?.country ?? "all"],
+    queryFn: async () => unwrap(await api.GET("/events", { params: { query } })),
     refetchInterval: 30_000,
   });
 }

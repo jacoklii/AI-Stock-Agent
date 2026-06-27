@@ -27,6 +27,10 @@ class ArticleOut(BaseModel):
     summary: str
     significance: float
     tickers: list[str]
+    # Surveillance domain the event was routed into (geopolitics|macro|industry|market) and the
+    # geographic dimension (GDELT source country; null for Alpha Vantage's financial feed).
+    domain: str | None = None
+    source_country: str | None = None
 
 
 class RelatedSessionOut(BaseModel):
@@ -91,6 +95,8 @@ class WorldItem(BaseModel):
     source_url: str | None = None
     article_refs: list[int] = Field(default_factory=list)
     tickers: list[str] = Field(default_factory=list)
+    # Geographic dimension for geopolitics (GDELT) items — the source country; null otherwise.
+    source_country: str | None = None
 
 
 class WorldDomain(BaseModel):
@@ -99,6 +105,8 @@ class WorldDomain(BaseModel):
     # The agent's per-section synthesis (from section_summary); null until it has run for this domain.
     summary: str | None = None
     key_tickers: list[str] = Field(default_factory=list)
+    # The swept events the synthesis ("Summary") was built from — lets the feed trace prose → sources.
+    source_event_ids: list[int] = Field(default_factory=list)
     items: list[WorldItem] = Field(default_factory=list)
 
 

@@ -23,6 +23,7 @@ WF_DAILY_DIGEST = "daily_research_digest"
 WF_MARKET_PULSE = "market_pulse"
 WF_MARKET_DATA_INGEST = "market_data_ingest"
 WF_NEWS_INGEST = "news_ingest"
+WF_GDELT_INGEST = "gdelt_ingest"
 WF_SECTION_SYNTHESIS = "section_synthesis"
 WF_RESCORE = "company_rescore"
 WF_PROSE_REGEN = "prose_regeneration"
@@ -138,6 +139,18 @@ register_trigger(Trigger(
     description="Overnight breadth (20:00, 23:00, 02:00, 05:00 ET): sparse sweeps to conserve the AV free-tier budget.",
     cron="0 20,23,2,5 * * *",
     timezone="America/New_York",
+))
+# GDELT is keyless with no daily cap — only a ≤1-request/5s politeness limit (paced process-wide by
+# the provider's limiter). So unlike AV's market-hours-shaped, free-tier-budgeted cadence, geopolitics
+# runs on a flat round-the-clock interval. Every 30 min (48/day) keeps the world current while leaving
+# the rate budget almost entirely free for on-demand user sweeps (which the limiter interleaves safely).
+register_trigger(Trigger(
+    name="gdelt_ingest_steady",
+    kind=TriggerKind.scheduled,
+    workflow=WF_GDELT_INGEST,
+    description="Steady geopolitics sweep (every 30 min, round the clock): pull GDELT global events into "
+    "the geopolitics domain with source_country. Decoupled from the AV cadence; rate-paced, not budgeted.",
+    cron="*/30 * * * *",
 ))
 register_trigger(Trigger(
     name="market_data_daily",

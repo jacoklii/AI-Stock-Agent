@@ -28,6 +28,7 @@ def _event(
     industry_id: int | None = None,
     tickers: list[str] | None = None,
     domain: str | None = None,
+    source_country: str | None = None,
 ) -> SimpleNamespace:
     return SimpleNamespace(
         id=id,
@@ -40,16 +41,22 @@ def _event(
         tickers=tickers or [],
         company_id=company_id,
         industry_id=industry_id,
+        source_country=source_country,
         # Mirrors the ORM column: None falls back to the keyword router; set value overrides it.
         domain=SimpleNamespace(value=domain) if domain is not None else None,
     )
 
 
-def _section(section_key: str, snapshot: str, key_tickers: list[str] | None = None) -> SimpleNamespace:
+def _section(
+    section_key: str,
+    snapshot: str,
+    key_tickers: list[str] | None = None,
+    source_event_ids: list[int] | None = None,
+) -> SimpleNamespace:
     return SimpleNamespace(
         section_key=section_key,
         snapshot=snapshot,
-        payload=SimpleNamespace(key_tickers=key_tickers or []),
+        payload=SimpleNamespace(key_tickers=key_tickers or [], source_event_ids=source_event_ids or []),
     )
 
 
@@ -86,7 +93,7 @@ def test_world_attaches_section_synthesis_per_domain(client) -> None:
     events = [
         _event(id=2, headline="Inflation cools as the Fed holds rates", significance=0.8, published_at=_NOW),
     ]
-    sections = [_section("macro", "Rates steady; inflation easing.", ["TLT", "SPY"])]
+    sections = [_section("macro", "Rates steady; inflation easing.", ["TLT", "SPY"], [2])]
     use_session(
         FakeSession(
             [FakeResult(scalars=[]), FakeResult(scalars=events), FakeResult(scalars=sections)]
@@ -97,8 +104,11 @@ def test_world_attaches_section_synthesis_per_domain(client) -> None:
     by_key = {d["key"]: d for d in body["domains"]}
     assert by_key["macro"]["summary"] == "Rates steady; inflation easing."
     assert by_key["macro"]["key_tickers"] == ["TLT", "SPY"]
+    # The synthesis traces back to the swept events it was built from.
+    assert by_key["macro"]["source_event_ids"] == [2]
     # A domain with no section row stays null.
     assert by_key["geopolitics"]["summary"] is None
+    assert by_key["geopolitics"]["source_event_ids"] == []
 
 
 def test_world_prefers_stored_domain_over_heuristic(client) -> None:
