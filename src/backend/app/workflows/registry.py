@@ -15,6 +15,7 @@ from app.workflows.message import daily_digest, market_pulse
 from app.workflows.research import (
     deep_research,
     followup,
+    gdelt_ingest,
     market_data_ingest,
     news_ingest,
     section_synthesis,
@@ -23,6 +24,7 @@ from app.workflows.triggers import (
     WF_DAILY_DIGEST,
     WF_DEEP_RESEARCH,
     WF_FOLLOWUP,
+    WF_GDELT_INGEST,
     WF_MARKET_DATA_INGEST,
     WF_MARKET_PULSE,
     WF_NEWS_INGEST,
@@ -33,6 +35,7 @@ from app.workflows.triggers import (
 
 WORKFLOWS: dict[str, Callable[..., Awaitable[object]]] = {
     WF_NEWS_INGEST: news_ingest.run,
+    WF_GDELT_INGEST: gdelt_ingest.run,
     WF_MARKET_DATA_INGEST: market_data_ingest.run,
     WF_RESCORE: company_rescore.run,
     WF_PROSE_REGEN: prose_regeneration.run,

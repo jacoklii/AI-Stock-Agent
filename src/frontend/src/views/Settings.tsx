@@ -50,7 +50,7 @@ export function Settings() {
     });
   }, [prefs.data]);
 
-  if (prefs.isLoading) return <p className="text-sm text-neutral-400">Loading…</p>;
+  if (prefs.isLoading) return <p className="text-sm" style={{ color: "var(--text-dim)" }}>Loading…</p>;
   if (prefs.data === null)
     return (
       <p className="text-sm text-red-600">
@@ -87,38 +87,38 @@ export function Settings() {
       <SnapshotCard title="Notifications">
         <div className="space-y-3">
           <label className="block">
-            <span className="text-xs text-neutral-500">Email address</span>
+            <span className="text-xs text-[color:var(--text-muted)]">Email address</span>
             <input
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@example.com"
-              className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-1.5 text-sm focus:border-neutral-500 focus:outline-none"
+              className="mt-1 w-full rounded-lg border border-[var(--border-default)] px-3 py-1.5 text-sm focus:border-[var(--text-muted)] focus:outline-none"
             />
           </label>
           <div className="grid grid-cols-2 gap-3">
             <label className="block">
-              <span className="text-xs text-neutral-500">iMessage (macOS host only)</span>
+              <span className="text-xs text-[color:var(--text-muted)]">iMessage (macOS host only)</span>
               <input
                 value={imessage}
                 onChange={(e) => setImessage(e.target.value)}
                 placeholder="+1 555 0100"
-                className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-1.5 text-sm focus:border-neutral-500 focus:outline-none"
+                className="mt-1 w-full rounded-lg border border-[var(--border-default)] px-3 py-1.5 text-sm focus:border-[var(--text-muted)] focus:outline-none"
               />
             </label>
             <label className="block">
-              <span className="text-xs text-neutral-500">WhatsApp (not yet wired)</span>
+              <span className="text-xs text-[color:var(--text-muted)]">WhatsApp (not yet wired)</span>
               <input
                 value={whatsapp}
                 onChange={(e) => setWhatsapp(e.target.value)}
                 placeholder="+1 555 0100"
-                className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-1.5 text-sm focus:border-neutral-500 focus:outline-none"
+                className="mt-1 w-full rounded-lg border border-[var(--border-default)] px-3 py-1.5 text-sm focus:border-[var(--text-muted)] focus:outline-none"
               />
             </label>
           </div>
 
           {DELIVERY_SHAPES.map((shape) => (
             <div key={shape.key}>
-              <span className="text-xs text-neutral-500">{shape.label} goes to</span>
+              <span className="text-xs text-[color:var(--text-muted)]">{shape.label} goes to</span>
               <div className="mt-1 flex flex-wrap gap-2">
                 {CHANNELS.map((c) => {
                   const active = routes[shape.key].includes(c);
@@ -128,11 +128,12 @@ export function Settings() {
                       type="button"
                       aria-pressed={active}
                       onClick={() => toggleRoute(shape.key, c)}
-                      className={`rounded-full px-3 py-1 text-xs font-medium ring-1 ring-inset ${
+                      className="rounded-full px-3 py-1 text-xs font-medium"
+                      style={
                         active
-                          ? "bg-neutral-900 text-white ring-neutral-900"
-                          : "bg-white text-neutral-500 ring-neutral-200 hover:ring-neutral-400"
-                      }`}
+                          ? { background: "var(--accent)", color: "var(--on-accent)", boxShadow: "inset 0 0 0 1px var(--accent)" }
+                          : { background: "var(--surface-inset)", color: "var(--text-muted)", boxShadow: "inset 0 0 0 1px var(--border-default)" }
+                      }
                     >
                       {c}
                     </button>
@@ -146,7 +147,8 @@ export function Settings() {
             type="button"
             onClick={saveChannels}
             disabled={updateChannels.isPending}
-            className="rounded-lg bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white disabled:opacity-40"
+            className="rounded-lg px-4 py-1.5 text-sm font-medium disabled:opacity-40"
+            style={{ background: "var(--accent)", color: "var(--on-accent)" }}
           >
             {updateChannels.isPending ? "Saving…" : "Save notifications"}
           </button>
@@ -160,7 +162,7 @@ export function Settings() {
       </SnapshotCard>
 
       <SnapshotCard title="Brief mega-caps">
-        <p className="mb-2 text-xs text-neutral-400">
+        <p className="mb-2 text-xs text-[color:var(--text-dim)]">
           Added to the fixed core (indices, gold, 10Y, DXY, VIX). Comma-separated tickers.
         </p>
         <form
@@ -180,12 +182,12 @@ export function Settings() {
             value={briefSymbols}
             onChange={(e) => setBriefSymbols(e.target.value)}
             placeholder="NVDA, MSFT, TSM"
-            className="flex-1 rounded-lg border border-neutral-300 px-3 py-1.5 font-mono text-sm focus:border-neutral-500 focus:outline-none"
+            className="flex-1 rounded-lg border border-[var(--border-default)] px-3 py-1.5 font-mono text-sm focus:border-[var(--text-muted)] focus:outline-none"
           />
           <button
             type="submit"
             disabled={updateBriefUser.isPending}
-            className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium hover:bg-neutral-100 disabled:opacity-40"
+            className="rounded-lg border border-[var(--border-default)] px-3 py-1.5 text-sm font-medium hover:bg-[var(--surface-hover)] disabled:opacity-40"
           >
             Save
           </button>
@@ -195,7 +197,7 @@ export function Settings() {
       </SnapshotCard>
 
       <SnapshotCard title="Weekly token budget">
-        <p className="mb-2 text-xs text-neutral-400">
+        <p className="mb-2 text-xs text-[color:var(--text-dim)]">
           The agent self-paces against this cap (tokens per trailing 7 days). Empty = uncapped.
         </p>
         <form
@@ -212,12 +214,12 @@ export function Settings() {
             onChange={(e) => setBudget(e.target.value)}
             placeholder="e.g. 2000000"
             inputMode="numeric"
-            className="flex-1 rounded-lg border border-neutral-300 px-3 py-1.5 font-mono text-sm focus:border-neutral-500 focus:outline-none"
+            className="flex-1 rounded-lg border border-[var(--border-default)] px-3 py-1.5 font-mono text-sm focus:border-[var(--text-muted)] focus:outline-none"
           />
           <button
             type="submit"
             disabled={updateBudget.isPending}
-            className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium hover:bg-neutral-100 disabled:opacity-40"
+            className="rounded-lg border border-[var(--border-default)] px-3 py-1.5 text-sm font-medium hover:bg-[var(--surface-hover)] disabled:opacity-40"
           >
             Save
           </button>

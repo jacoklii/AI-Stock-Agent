@@ -11,9 +11,9 @@ export function SnapshotCard({
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-lg border border-neutral-200 bg-white p-4">
+    <section className="rounded-lg border p-4" style={{ borderColor: "var(--border-default)", background: "var(--surface-panel)" }}>
       <header className="mb-3 flex items-baseline justify-between gap-2">
-        <h2 className="text-xs font-semibold uppercase tracking-wide text-neutral-400">{title}</h2>
+        <h2 className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-dim)" }}>{title}</h2>
         {aside}
       </header>
       {children}

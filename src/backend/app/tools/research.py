@@ -157,9 +157,10 @@ async def get_price_history(
 
 @tool(
     name="get_news_events",
-    description="News events filtered by company, industry, surveillance domain, and/or minimum "
-    "significance. Pass industry_id to pull an industry's company-tagged events; pass domain "
-    "(geopolitics|macro|industry|market) to pull a surveillance section's events.",
+    description="News events filtered by company, industry, surveillance domain, source country, "
+    "and/or minimum significance. Pass industry_id to pull an industry's company-tagged events; "
+    "pass domain (geopolitics|macro|industry|market) to pull a surveillance section's events; pass "
+    "source_country (e.g. 'United States') to pull GDELT geopolitics events by geography.",
     tasks={
         TASK_SECTION_SNAPSHOT,
         TASK_COMPANY_PROSE,
@@ -175,12 +176,14 @@ async def get_news_events(
     company_id: int | None = None,
     industry_id: int | None = None,
     domain: NewsDomain | None = None,
+    source_country: str | None = None,
     min_significance: float | None = None,
     limit: int = 50,
 ) -> list[NewsEventResult]:
-    """Filter by company, industry, and/or surveillance ``domain``. ``industry_id`` matches events
-    tagged to that industry; ``domain`` matches the section a stored event was routed into.
-    ``min_significance`` keeps events at or above the given score (0–1)."""
+    """Filter by company, industry, surveillance ``domain``, and/or ``source_country``.
+    ``industry_id`` matches events tagged to that industry; ``domain`` matches the section a stored
+    event was routed into; ``source_country`` matches the GDELT geographic attribution (geopolitics
+    events). ``min_significance`` keeps events at or above the given score (0–1)."""
     stmt = select(NewsEvent)
     if company_id is not None:
         stmt = stmt.where(NewsEvent.company_id == company_id)
@@ -188,6 +191,8 @@ async def get_news_events(
         stmt = stmt.where(NewsEvent.industry_id == industry_id)
     if domain is not None:
         stmt = stmt.where(NewsEvent.domain == domain)
+    if source_country is not None:
+        stmt = stmt.where(NewsEvent.source_country == source_country)
     if min_significance is not None:
         stmt = stmt.where(NewsEvent.significance >= min_significance)
     stmt = stmt.order_by(NewsEvent.published_at.desc()).limit(limit)
@@ -203,6 +208,8 @@ async def get_news_events(
             tickers=list(r.tickers),
             significance=r.significance,
             summary=r.summary,
+            domain=r.domain.value if r.domain is not None else None,
+            source_country=r.source_country,
         )
         for r in rows
     ]

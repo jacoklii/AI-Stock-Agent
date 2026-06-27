@@ -84,6 +84,10 @@ class NewsEventResult(BaseModel):
     tickers: list[str]
     significance: float
     summary: str
+    # Surveillance domain the event was routed into (geopolitics|macro|industry|market), and the
+    # geographic dimension (GDELT's source country; null for Alpha Vantage's financial feed).
+    domain: str | None = None
+    source_country: str | None = None
 
 
 class ScreenCandidate(BaseModel):

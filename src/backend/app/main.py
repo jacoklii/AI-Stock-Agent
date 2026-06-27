@@ -19,6 +19,7 @@ from app.api.routes import (
     agent,
     chat,
     companies,
+    events,
     home,
     inbox,
     ops,
@@ -117,7 +118,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-for module in (home, pulse, companies, sectors, inbox, preferences, research, chat, agent, world, ops):
+for module in (home, pulse, companies, sectors, inbox, preferences, research, chat, agent, world, events, ops):
     app.include_router(module.router)
 
 

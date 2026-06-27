@@ -19,6 +19,7 @@ from app.api.deps import ro_session
 from app.api.routes.home import latest_digest
 from app.api.schemas import WorldDomain, WorldItem, WorldSignal, WorldView
 from app.config import (
+    PAYWALLED_SOURCE_DOMAINS,
     WORLD_FEED_LIMIT,
     WORLD_GEOPOLITICS_KEYWORDS,
     WORLD_MACRO_KEYWORDS,
@@ -29,7 +30,7 @@ from app.config import (
 )
 from app.db.models.news import NewsEvent
 from app.db.models.section import SectionSummary
-from app.utils import classify_domain, derive_horizon
+from app.utils import classify_domain, derive_horizon, is_paywalled
 
 router = APIRouter(tags=["world"])
 
@@ -67,6 +68,11 @@ async def world(session: AsyncSession = Depends(ro_session)) -> WorldView:
     buckets: dict[str, list[WorldItem]] = {key: [] for key, _ in _DOMAIN_ORDER}
     ranked: list[tuple[float, WorldSignal]] = []
     for e in events:
+        # Accessibility safety net: never surface a hard-paywalled link. Ingest already drops these
+        # before write, so this only catches rows stored before the gate existed (or before the
+        # blocklist last changed) — the display-side mirror of the freshness shelf above.
+        if is_paywalled(e.url, PAYWALLED_SOURCE_DOMAINS):
+            continue
         # Prefer the domain classified + stored at ingest; fall back to the keyword router for
         # rows written before the column existed (or where the classifier abstained).
         domain = (
@@ -97,6 +103,7 @@ async def world(session: AsyncSession = Depends(ro_session)) -> WorldView:
                 source_url=e.url,
                 article_refs=[e.id],
                 tickers=list(e.tickers),
+                source_country=e.source_country,
             )
         )
         ranked.append(
@@ -126,6 +133,7 @@ async def world(session: AsyncSession = Depends(ro_session)) -> WorldView:
             title=title,
             summary=by_section[key].snapshot if key in by_section else None,
             key_tickers=by_section[key].payload.key_tickers if key in by_section else [],
+            source_event_ids=by_section[key].payload.source_event_ids if key in by_section else [],
             items=buckets[key],
         )
         for key, title in _DOMAIN_ORDER

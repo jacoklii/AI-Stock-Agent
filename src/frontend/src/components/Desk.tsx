@@ -215,7 +215,7 @@ export function Desk() {
                 style={{ borderLeft: "1px solid var(--border-default)", background: "var(--bg-app)" }}
               >
                 <header
-                  className="flex h-10 shrink-0 items-center gap-2 px-3 pl-4"
+                  className="flex h-11 shrink-0 items-center gap-2 px-3 pl-4"
                   style={{ borderBottom: "1px solid var(--border-default)", background: "var(--surface-panel)" }}
                 >
                   <span className="text-sm font-bold" style={{ color: "var(--text-strong)", fontFamily: "var(--font-sans)" }}>

@@ -39,6 +39,9 @@ export const ChevronsRight = (p: IconProps) => (
 export const ChevronsLeft = (p: IconProps) => (
   <svg {...base(p)}><path d="m11 17-5-5 5-5M18 17l-5-5 5-5" /></svg>
 );
+export const ChevronRight = (p: IconProps) => (
+  <svg {...base(p)}><path d="m9 18 6-6-6-6" /></svg>
+);
 export const CloseIcon = (p: IconProps) => (
   <svg {...base(p)}><path d="M18 6 6 18M6 6l12 12" /></svg>
 );

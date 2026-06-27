@@ -1,14 +1,18 @@
 """News events — the high-volume ingest surface.
 
-``NewsEvent`` is tracked for any company the AI touches (the full research surface).
-Items below the ingest relevance floor are dropped and never stored here. The ``summary``
-is **Alpha Vantage's own extractive summary** — the canonical record; the raw article body
-is never stored, and ingest pays no LLM/embedding cost per article (synthesis is per-section).
+``NewsEvent`` is tracked for any company the AI touches (the full research surface). Two sources
+converge here: **Alpha Vantage** (financial news — macro / industry / market, with tickers + a
+relevance score) and **GDELT** (geopolitics / global events, with a ``source_country`` and no
+tickers). Items below the ingest relevance floor are dropped and never stored. The ``summary`` is
+the source's own text — AV's extractive summary, or (GDELT has no body) the GDELT headline. The raw
+article body is never stored, and ingest pays no LLM/embedding cost per article (synthesis is
+per-section).
 
-URL is first-class display content; ``significance`` is Alpha Vantage's relevance score
-(0–1) indicating how material the event is. Events are associated to a company via
-``company_id`` (optional FK, set when the event maps to a single company) and to the
-broader tickers array for multi-company events.
+URL is first-class display content; ``significance`` is the event's relevance (0–1): AV's own
+relevance score, or a fixed floor for GDELT (which ships no score). Events are associated to a
+company via ``company_id`` (optional FK, set when the event maps to a single company) and to the
+broader tickers array for multi-company events. ``source_country`` is the geographic dimension —
+the country GDELT attributes the article to (null for AV's financial feed), enabling map/geo reads.
 """
 
 from __future__ import annotations
@@ -56,3 +60,7 @@ class NewsEvent(Base, TimestampMixin, FreshnessMixin):
     # Nullable so older rows and abstentions degrade to the heuristic in /world. Indexed for the feed.
     domain: Mapped[NewsDomain | None] = mapped_column(news_domain_enum, index=True, nullable=True)
     summary: Mapped[str] = mapped_column(Text)
+    # Geographic dimension — the country GDELT attributes the article to (e.g. "United States").
+    # Null for Alpha Vantage's financial feed, which carries no geography. Indexed so the feed/tools
+    # can read geopolitics by country (the GDELT "geographical mapping" surface).
+    source_country: Mapped[str | None] = mapped_column(String(64), index=True, nullable=True)

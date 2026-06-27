@@ -5,8 +5,10 @@ Kept side-effect-free so they're trivially unit-testable and safe to call from a
 
 from __future__ import annotations
 
+from collections.abc import Collection
 from datetime import datetime, timedelta, timezone
 from typing import Literal
+from urllib.parse import urlsplit
 
 # The surveillance vocabulary. Significance is presented as a time HORIZON, never a number
 # (PROJECT.md §8) — the four domains order the world top-down by where market moves originate.
@@ -32,6 +34,25 @@ def derive_horizon(
         published_at = published_at.replace(tzinfo=timezone.utc)
     recent = (now - published_at) <= timedelta(hours=window_hours)
     return "now" if recent and significance >= min_significance else "building"
+
+
+def host_of(url: str) -> str:
+    """The lowercased host of a URL with a leading ``www.`` stripped (``""`` if unparseable).
+    ``https://www.WSJ.com/x`` → ``wsj.com``. Used by the accessibility gate to match a story's
+    outlet against the paywall blocklist."""
+    host = (urlsplit(url).hostname or "").lower()
+    return host[4:] if host.startswith("www.") else host
+
+
+def is_paywalled(url: str, blocked: Collection[str]) -> bool:
+    """True if the URL's outlet is (or is a subdomain of) any domain in the hard-paywall blocklist.
+    Matches ``www.wsj.com`` and ``markets.businessinsider.com`` to a ``wsj.com`` / ``businessinsider.com``
+    entry; an empty/unparseable host is never paywalled. Ingest drops these before write so every
+    surfaced link is actually readable — the AV summary still rides along in-app as orientation."""
+    host = host_of(url)
+    if not host:
+        return False
+    return any(host == d or host.endswith("." + d) for d in blocked)
 
 
 def matches_keywords(text: str, keywords: tuple[str, ...]) -> bool:

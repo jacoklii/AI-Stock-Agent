@@ -1,6 +1,6 @@
-/* Three families: Space Grotesk (UI/labels), Newsreader (the agent's reading prose),
-   JetBrains Mono (numbers/tickers/telemetry — the transparency layer). */
-@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=JetBrains+Mono:wght@400;500;600&display=swap");
+/* Three families: Space Grotesk (UI/labels), Spectral (the agent's reading prose — a modern,
+   screen-built serif), JetBrains Mono (numbers/tickers/telemetry — the transparency layer). */
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Spectral:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500;600&display=swap");
 @import "tailwindcss";
 
 /* ---- Design tokens → Tailwind theme. Brings the design-system palette/type/radii into the
@@ -8,29 +8,30 @@
    resolve to the warm research-desk values. Source: design-system/tokens/*.css. ---- */
 @theme {
   --font-sans: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
-  --font-serif: "Newsreader", Georgia, "Times New Roman", serif;
+  --font-serif: "Spectral", Georgia, "Times New Roman", serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
 
-  /* Paper surfaces + warm ink, mapped to semantic Tailwind color utilities. */
-  --color-app: oklch(0.972 0.007 83);
-  --color-void: oklch(0.955 0.009 82);
-  --color-panel: oklch(0.995 0.003 85);
-  --color-raised: oklch(0.985 0.005 84);
-  --color-hover: oklch(0.955 0.009 82);
-  --color-inset: oklch(0.935 0.010 80);
-  --color-strong: oklch(0.27 0.012 68);
-  --color-body: oklch(0.40 0.012 70);
-  --color-muted: oklch(0.545 0.011 74);
-  --color-dim: oklch(0.665 0.010 78);
-  --color-line: oklch(0.905 0.008 80);
-  --color-line-strong: oklch(0.855 0.011 78);
-  --color-accent: oklch(0.605 0.090 154);
-  --color-accent-strong: oklch(0.520 0.088 155);
-  --color-up: oklch(0.555 0.105 150);
-  --color-down: oklch(0.555 0.135 32);
-  --color-amber: oklch(0.640 0.110 68);
-  --color-link: oklch(0.530 0.095 245);
-  --color-danger: oklch(0.545 0.150 30);
+  /* Dark command-console surfaces, mapped to semantic Tailwind color utilities. The whole platform
+     is dark now (every panel) — these feed bg-app / text-strong / border-line / etc. */
+  --color-app: oklch(0.198 0.011 256);
+  --color-void: oklch(0.168 0.010 256);
+  --color-panel: oklch(0.232 0.012 256);
+  --color-raised: oklch(0.258 0.013 256);
+  --color-hover: oklch(0.298 0.015 256);
+  --color-inset: oklch(0.180 0.011 256);
+  --color-strong: oklch(0.966 0.004 256);
+  --color-body: oklch(0.840 0.007 256);
+  --color-muted: oklch(0.662 0.009 256);
+  --color-dim: oklch(0.522 0.010 256);
+  --color-line: oklch(0.338 0.012 256);
+  --color-line-strong: oklch(0.440 0.016 256);
+  --color-accent: oklch(0.78 0.150 158);
+  --color-accent-strong: oklch(0.70 0.140 158);
+  --color-up: oklch(0.78 0.150 150);
+  --color-down: oklch(0.64 0.160 27);
+  --color-amber: oklch(0.78 0.135 66);
+  --color-link: oklch(0.74 0.120 235);
+  --color-danger: oklch(0.64 0.165 27);
 
   --radius-xs: 2px;
   --radius-sm: 3px;
@@ -52,36 +53,48 @@
   --line-1: oklch(0.905 0.008 80);
   --line-2: oklch(0.855 0.011 78);
 
-  --signal-soft: oklch(0.605 0.090 154 / 0.12);
-  --up-500: oklch(0.555 0.105 150);
-  --up-bg: oklch(0.605 0.090 152 / 0.12);
-  --down-500: oklch(0.555 0.135 32);
-  --down-bg: oklch(0.585 0.130 33 / 0.11);
-  --amber-500: oklch(0.640 0.110 68);
-  --amber-bg: oklch(0.700 0.110 70 / 0.15);
-  --red-500: oklch(0.545 0.150 30);
-  --red-bg: oklch(0.560 0.140 31 / 0.12);
+  --signal-soft: oklch(0.78 0.13 158 / 0.16);
+  --up-500: oklch(0.78 0.15 150);
+  --up-bg: oklch(0.78 0.13 150 / 0.16);
+  --down-500: oklch(0.64 0.16 27);
+  --down-bg: oklch(0.64 0.15 27 / 0.16);
+  --amber-500: oklch(0.78 0.135 66);
+  --amber-bg: oklch(0.78 0.13 66 / 0.18);
+  --red-500: oklch(0.64 0.165 27);
+  --red-bg: oklch(0.64 0.15 27 / 0.18);
 
-  /* Semantic aliases — reference these, not the ramps above. */
-  --bg-app: var(--paper-100);
-  --bg-void: var(--paper-200);
-  --surface-panel: var(--paper-0);
-  --surface-raised: var(--paper-50);
-  --surface-hover: var(--paper-200);
-  --surface-inset: var(--paper-300);
-  --text-strong: var(--ink-1);
-  --text-body: var(--ink-2);
-  --text-muted: var(--ink-3);
-  --text-dim: var(--ink-4);
-  --border-default: var(--line-1);
-  --border-strong: var(--line-2);
-  --accent: oklch(0.605 0.090 154);
-  --accent-hover: oklch(0.520 0.088 155);
-  --link: oklch(0.530 0.095 245);
+  /* Semantic aliases — DARK across the whole platform. Reference these, not the ramps above.
+     (The raw --paper-/--ink- ramps stay light on purpose: they back the few text-on-color spots —
+     the red server banner, accent buttons — via --on-accent below.) */
+  --bg-app: oklch(0.198 0.011 256);
+  --bg-void: oklch(0.168 0.010 256);
+  --surface-panel: oklch(0.232 0.012 256);
+  --surface-raised: oklch(0.258 0.013 256);
+  --surface-hover: oklch(0.298 0.015 256);
+  --surface-inset: oklch(0.180 0.011 256);
+  --text-strong: oklch(0.966 0.004 256);
+  --text-body: oklch(0.840 0.007 256);
+  --text-muted: oklch(0.662 0.009 256);
+  --text-dim: oklch(0.522 0.010 256);
+  --border-default: oklch(0.338 0.012 256);
+  --border-strong: oklch(0.440 0.016 256);
+  --accent: oklch(0.78 0.150 158);
+  --accent-hover: oklch(0.86 0.130 158);
+  --link: oklch(0.74 0.120 235);
+  --alert: oklch(0.64 0.165 27);     /* red — alert / live (= --red-500) */
+  --on-accent: oklch(0.18 0.030 158); /* dark text-on a bright accent or colored fill */
+
+  /* Blue is reserved for LINKS ONLY now — the rest of the theme is green. (--link is the live one;
+     these stay defined for link-adjacent use.) */
+  --blue-500: oklch(0.74 0.120 235);
+  --blue-bg: oklch(0.74 0.120 235 / 0.18);
+  /* Orange/amber is reserved for the agent & autonomy ONLY (the researcher, automation, budget). */
+  --agent: var(--amber-500);
+  --agent-bg: var(--amber-bg);
 
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --font-sans: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
-  --font-serif: "Newsreader", Georgia, "Times New Roman", serif;
+  --font-serif: "Spectral", Georgia, "Times New Roman", serif;
 
   --radius-sm: 3px;
   --radius-md: 5px;
@@ -98,7 +111,7 @@ body {
   font-size: 0.8125rem;
   -webkit-font-smoothing: antialiased;
 }
-::selection { background: oklch(0.605 0.090 154 / 0.18); color: var(--ink-1); }
+::selection { background: oklch(0.78 0.13 158 / 0.25); color: oklch(0.99 0 0); }
 
 /* Caps label — panel headers and field labels. */
 .terminal-label {
@@ -124,6 +137,29 @@ body {
 @keyframes asa-status-out { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(-0.7em); } }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; }
+}
+
+/* Editorial drop cap for the surveillance lead — a front-page signal, no image required. The
+   first letter of the lead graf drops three lines, set in the serif reading face. */
+.hero-lead p:first-of-type::first-letter {
+  float: left;
+  font-family: var(--font-serif);
+  font-size: 3.1em;
+  line-height: 0.78;
+  font-weight: 600;
+  padding: 0.04em 0.11em 0 0;
+  color: var(--text-strong);
+}
+
+/* Outlet kicker — REUTERS · BLOOMBERG. Small mono caps that give each story a masthead without a
+   boxed badge (PROJECT.md §8). */
+.outlet {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
 }
 
 /* Information-dense defaults; the agent's text artifacts keep their line breaks. */
@@ -164,18 +200,55 @@ body {
   padding-left: 1.25rem;
 }
 .prose-md a {
-  color: var(--color-blue-700);
+  color: var(--link);
   text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: color-mix(in oklch, var(--link) 35%, transparent);
+}
+.prose-md a:hover { text-decoration-color: var(--link); }
+
+/* The agent's reading voice as markdown — the world synthesis & findings. Spectral serif body,
+   restrained sans subheads (no giant H1s competing with the section title), tight measure. */
+.prose-serif {
+  font-family: var(--font-serif);
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: var(--text-body);
+}
+.prose-serif p { margin: 0 0 0.6em; }
+.prose-serif p:last-child { margin-bottom: 0; }
+.prose-serif strong { color: var(--text-strong); font-weight: 600; }
+.prose-serif em { font-style: italic; }
+.prose-serif h1, .prose-serif h2, .prose-serif h3, .prose-serif h4 {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 0.8125rem;
+  color: var(--text-strong);
+  letter-spacing: -0.01em;
+  margin: 0.9em 0 0.3em;
+}
+.prose-serif h1:first-child, .prose-serif h2:first-child, .prose-serif h3:first-child {
+  margin-top: 0;
+}
+.prose-serif ul, .prose-serif ol { margin: 0.4em 0; padding-left: 1.1rem; }
+.prose-serif ul { list-style: disc; }
+.prose-serif ol { list-style: decimal; }
+.prose-serif li { margin: 0.15em 0; }
+.prose-serif blockquote {
+  margin: 0.5em 0;
+  padding-left: 0.75rem;
+  border-left: 2px solid var(--border-strong);
+  color: var(--text-muted);
 }
 .prose-md code {
   font-size: 0.8125rem;
-  background: var(--color-neutral-100);
+  background: var(--surface-inset);
   border-radius: 0.25rem;
   padding: 0 0.25rem;
 }
 .prose-md pre {
   overflow-x: auto;
-  background: var(--color-neutral-100);
+  background: var(--surface-inset);
   border-radius: 0.375rem;
   padding: 0.5rem;
   margin: 0.5rem 0;
@@ -186,14 +259,199 @@ body {
 }
 .prose-md th,
 .prose-md td {
-  border: 1px solid var(--color-neutral-200);
+  border: 1px solid var(--border-default);
   padding: 0.25rem 0.5rem;
   text-align: left;
 }
 .prose-md th {
-  background: var(--color-neutral-50);
+  background: var(--surface-hover);
   font-weight: 600;
 }
+
+/* ============================================================================
+   WORLD SURVEILLANCE CONSOLE — dark command-monitor scope.
+   The middle panel is a deep graphite "screen" framed by the warm side panels.
+   Redefining the semantic aliases here means existing var(--text-strong)/etc. and
+   child components (Prose, outlet) adapt to dark without per-element overrides.
+   Font roles still hold: Space Grotesk titles, JetBrains Mono telemetry, Spectral
+   serif only for the agent's read. Per-domain station colors make each zone distinct.
+   ============================================================================ */
+.world-console {
+  /* Inherits the dark theme from :root (the whole platform is dark now); this scope only adds the
+     World-specific station colors, the grid texture, and the neutral top glow. */
+  /* Domain station color — ONE green accent for every domain (no tonal ramp, which read as a
+     gradient down the page). Sections are told apart by their GEO/MAC/IND/MKT label + structure;
+     green is the accent (rule, code chip, tint), not a fade. */
+  --geo: oklch(0.80 0.15 156);
+  --mac: oklch(0.80 0.15 156);
+  --ind: oklch(0.80 0.15 156);
+  --mkt: oklch(0.80 0.15 156);
+
+  --grid: oklch(0.42 0.012 256 / 0.22);
+
+  background-color: var(--bg-app);
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 34px 34px, 34px 34px;
+}
+
+/* --- Status strip (sticky console header) --- */
+.console-status {
+  background: oklch(0.180 0.012 256 / 0.90);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border-default);
+}
+.status-live {
+  width: 7px; height: 7px; border-radius: 999px; flex-shrink: 0;
+  background: var(--alert);
+  animation: console-ping 1.9s var(--ease-out) infinite;
+}
+@keyframes console-ping {
+  0%   { box-shadow: 0 0 0 0 oklch(0.705 0.20 28 / 0.5); }
+  70%  { box-shadow: 0 0 0 6px oklch(0.705 0.20 28 / 0); }
+  100% { box-shadow: 0 0 0 0 oklch(0.705 0.20 28 / 0); }
+}
+.stat-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-family: var(--font-mono); font-size: 9.5px; font-weight: 600;
+  letter-spacing: 0.10em; text-transform: uppercase; color: var(--text-muted);
+  padding: 2px 6px 2px 5px; border-radius: 0;
+  border: 1px solid var(--border-default); background: var(--surface-inset);
+}
+.stat-dot { width: 5px; height: 5px; border-radius: 999px; background: var(--zone); }
+
+/* --- Analyst brief (the agent's cross-domain read) --- */
+.console-brief {
+  position: relative; overflow: hidden;
+  border: 1px solid var(--border-default); border-radius: 0;
+  background: var(--surface-raised);
+}
+.console-brief::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 2px;
+  background: var(--agent);
+}
+.brief-mark { width: 7px; height: 7px; border-radius: 1px; background: var(--agent); transform: rotate(45deg); }
+.brief-matrix { border-top: 1px solid var(--border-default); }
+.brief-row {
+  position: relative; display: flex; align-items: flex-start; gap: 0.75rem; width: 100%;
+  text-align: left; padding: 0.6rem 1.25rem; border-bottom: 1px solid var(--border-default);
+  transition: background var(--dur-fast) var(--ease-out);
+}
+.brief-row:last-child { border-bottom: none; }
+.brief-row:hover { background: var(--surface-hover); }
+.brief-rail { position: absolute; left: 0; top: 0; bottom: 0; width: 2px; background: var(--zone); opacity: 0.85; }
+
+/* --- Horizon pill (TIME, never a number) --- */
+.hz {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-family: var(--font-mono); font-size: 9.5px; font-weight: 600;
+  letter-spacing: 0.10em; text-transform: uppercase;
+}
+.hz-now { color: var(--alert); }
+.hz-now .hz-dot { width: 5px; height: 5px; border-radius: 999px; background: var(--alert); box-shadow: 0 0 7px color-mix(in oklch, var(--alert) 70%, transparent); }
+.hz-building { color: var(--text-dim); }
+
+/* --- Signals (priority feed) --- */
+.signal-lane {
+  border: 1px solid var(--border-default); border-radius: 0;
+  background: var(--surface-panel); padding: 0.7rem 0.85rem;
+}
+.signal-lane-now { border-color: color-mix(in oklab, var(--alert) 38%, var(--border-default)); background: color-mix(in oklab, var(--alert) 5%, var(--surface-panel)); }
+.signal-item { display: flex; align-items: center; gap: 0.5rem; width: 100%; text-align: left; padding: 0.18rem 0; }
+.signal-bullet { width: 5px; height: 5px; border-radius: 999px; flex-shrink: 0; }
+
+/* --- Domain zone --- */
+/* The four zones connect into one continuous grid: flush-stacked, with the doubled border between
+   adjacent zones collapsed to a single hairline. Overview + Signals stay separate cards above. */
+.zone-stack > .domain-zone + .domain-zone { border-top: none; }
+.domain-zone {
+  overflow: hidden;
+  border: 1px solid var(--border-default); border-left: 3px solid var(--zone);
+  border-radius: 0;
+  background: var(--surface-panel);
+}
+.zone-head {
+  display: flex; align-items: center; gap: 0.6rem; padding: 0.7rem 1rem;
+  border-bottom: 1px solid color-mix(in oklab, var(--zone) 32%, var(--border-default));
+  background: color-mix(in oklab, var(--zone) 16%, var(--surface-inset));
+}
+.zone-code {
+  font-family: var(--font-mono); font-size: 10px; font-weight: 700; letter-spacing: 0.12em; color: var(--zone);
+  padding: 2px 6px; border-radius: 0;
+  border: 1px solid color-mix(in oklab, var(--zone) 45%, transparent);
+  background: color-mix(in oklab, var(--zone) 14%, transparent);
+}
+.zone-title { font-family: var(--font-sans); font-size: 1.05rem; font-weight: 700; letter-spacing: -0.015em; color: var(--text-strong); }
+.zone-count { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); }
+.domain-read { padding: 0.85rem 1rem 0.1rem; }
+
+/* --- Console "read more" affordance --- */
+.console-more {
+  font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--agent);
+}
+.console-more:hover { text-decoration: underline; }
+
+/* --- Synthesis block (the agent's read, welded onto the domain panel as a labeled dossier note) --- */
+.zone-synth {
+  position: relative;
+  padding: 0.7rem 1rem 0.75rem 1.05rem;
+  border-bottom: 1px solid var(--border-default);
+  background: color-mix(in oklab, var(--agent) 3%, transparent);
+}
+.zone-synth::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 2px; background: var(--agent); }
+.zone-synth .domain-read { padding: 0; }
+.synth-label { display: flex; align-items: center; gap: 0.45rem; margin-bottom: 0.4rem; }
+.synth-mark { width: 7px; height: 7px; background: var(--agent); transform: rotate(45deg); }
+.synth-kicker { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--agent); }
+.synth-sub { font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-dim); }
+.synth-prov { margin-top: 0.5rem; font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.04em; color: var(--text-dim); }
+.synth-prov .prov-em { color: var(--accent); }
+.synth-prov .prov-tk { color: var(--text-muted); }
+
+/* --- Feed (dense Bloomberg-style event list) --- */
+.zone-feed { padding: 0.55rem 1rem 0.85rem; }
+.feed-label { display: flex; align-items: center; gap: 0.55rem; margin-bottom: 0.4rem; }
+.feed-kicker { font-family: var(--font-mono); font-size: 9.5px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-dim); }
+.feed-rule { flex: 1; height: 1px; background: var(--border-default); }
+.feed-count { font-family: var(--font-mono); font-size: 9px; color: var(--text-dim); }
+
+.feed-dot { margin-top: 5px; width: 6px; height: 6px; border-radius: 999px; flex-shrink: 0; }
+.feed-dot-sm { width: 5px; height: 5px; border-radius: 999px; flex-shrink: 0; }
+.dot-now { background: var(--alert); box-shadow: 0 0 6px color-mix(in oklch, var(--alert) 60%, transparent); }
+.dot-build { background: var(--border-strong); }
+
+.feed-lead { display: flex; align-items: flex-start; gap: 0.6rem; padding: 0.5rem 0 0.6rem; border-bottom: 1px solid color-mix(in oklab, var(--border-default) 78%, transparent); }
+.lead-title { display: block; text-align: left; font-family: var(--font-sans); font-size: 0.95rem; font-weight: 600; line-height: 1.25; letter-spacing: -0.01em; color: var(--text-strong); }
+.lead-title:hover { text-decoration: underline; }
+.lead-summary {
+  margin-top: 0.2rem; font-family: var(--font-serif); font-size: 0.8rem; line-height: 1.45; color: var(--text-muted);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.lead-tickers { display: flex; flex-wrap: wrap; gap: 0.45rem; margin-top: 0.35rem; }
+.lead-tickers span { font-family: var(--font-mono); font-size: 9.5px; color: var(--accent); }
+
+.feed-row { display: flex; align-items: center; gap: 0.55rem; padding: 0.4rem 0; border-bottom: 1px solid color-mix(in oklab, var(--border-default) 50%, transparent); }
+.feed-row:last-of-type { border-bottom: none; }
+.row-title {
+  flex: 1; min-width: 0; text-align: left;
+  font-family: var(--font-sans); font-size: 0.8125rem; line-height: 1.3; color: var(--text-body);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.row-title:hover { color: var(--text-strong); text-decoration: underline; }
+
+.row-meta { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; }
+.lead-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 0.15rem; flex-shrink: 0; text-align: right; }
+.meta-cc { font-family: var(--font-mono); font-size: 9.5px; color: var(--text-muted); }
+.meta-age { font-family: var(--font-mono); font-size: 9.5px; color: var(--text-dim); }
+.meta-src { display: inline-flex; align-items: center; gap: 0.2rem; font-family: var(--font-mono); font-size: 9.5px; color: var(--link); }
+.meta-src:hover { text-decoration: underline; }
+
+.row-thumb { flex-shrink: 0; width: 54px; height: 40px; overflow: hidden; background: var(--surface-inset); }
+.row-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.lead-thumb { width: 72px; height: 52px; }
+
+.feed-more { margin-top: 0.6rem; font-family: var(--font-mono); font-size: 9.5px; color: var(--text-dim); }
 
 /* On dark bubbles (user side) links/code must stay readable. */
 .prose-md-invert a {

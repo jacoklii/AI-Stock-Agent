@@ -59,7 +59,7 @@ export function IndustryDetail({
                   className="rounded-md px-2.5 py-1 text-xs font-medium disabled:opacity-40"
                   style={
                     flagged
-                      ? { background: "var(--amber-bg)", color: "var(--amber-500)" }
+                      ? { background: "var(--signal-soft)", color: "var(--accent)" }
                       : { border: "1px solid var(--border-strong)", color: "var(--text-body)" }
                   }
                 >
@@ -69,7 +69,7 @@ export function IndustryDetail({
                   type="button"
                   onClick={() => onResearch(`${detail.data!.name} — `)}
                   className="text-xs font-medium hover:underline"
-                  style={{ color: "var(--link)" }}
+                  style={{ color: "var(--accent)" }}
                 >
                   research this industry →
                 </button>

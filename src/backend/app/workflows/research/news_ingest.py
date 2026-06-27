@@ -1,18 +1,21 @@
-"""News ingest pipeline — pull events, dedupe, filter by relevance, write, re-score.
+"""News ingest pipeline — pull Alpha Vantage events, dedupe, filter by relevance, write, re-score.
 
-The full research surface (not just the watchlist) flows through here from Alpha Vantage. Alpha
-Vantage already curates, scores, and summarizes its feed, so ingest is deliberately lean: it does no
-per-article LLM call and no embedding. Each kept event stores **Alpha Vantage's own extractive
-summary** as its canonical record (the original article body is never stored), with the AV relevance
-score as the event's ``significance``. Per-section synthesis (``section_synthesis``) is where the AI
-writes prose; this path just sweeps and files.
+The full research surface (not just the watchlist) flows through here from **Alpha Vantage** (financial
+news — macro / industry / market). Geopolitics is a *separate* source on its own steady cadence
+(``gdelt_ingest``); both write ``news_events`` through the shared :func:`persist_events` core, so the
+dedup / relevance / paywall / write rules are defined once here and reused. AV already curates and
+scores its feed, so ingest is deliberately lean: no per-article LLM call and no embedding. Each kept
+event stores AV's own extractive summary as its canonical record (the article body is never stored),
+with AV's relevance as the event's ``significance``. Per-section synthesis (``section_synthesis``) is
+where the AI writes prose; this path just sweeps and files.
 
 Runs day/night on the AV cadence (and inline from the daily digest) — already-stored URLs and
 near-identical headlines are skipped before the row is written, and a ``workflow_slot`` guard keeps
-concurrent runs from racing. An item below ``ALPHAVANTAGE_MIN_RELEVANCE`` is dropped after dedup.
-Watchlisted companies named by new events are enqueued for re-scoring (the event trigger), and an
-event at or above ``DEEP_RESEARCH_WAKEUP_SIGNIFICANCE`` wakes the autonomous researcher (signal
-convergence).
+concurrent runs from racing. An item below ``ALPHAVANTAGE_MIN_RELEVANCE`` is dropped after dedup, and
+an item from a hard-paywalled outlet (``PAYWALLED_SOURCE_DOMAINS``) is dropped too — a surfaced link is
+first-class content and must actually open, so a subscription-walled source never reaches the feed.
+Watchlisted companies named by new events are enqueued for re-scoring (the event trigger), and an event
+at or above ``DEEP_RESEARCH_WAKEUP_SIGNIFICANCE`` wakes the autonomous researcher (signal convergence).
 """
 
 from __future__ import annotations
@@ -28,12 +31,13 @@ from app.config import (
     ALPHAVANTAGE_MIN_RELEVANCE,
     DEDUP_LOOKBACK_DAYS,
     DEEP_RESEARCH_WAKEUP_SIGNIFICANCE,
+    PAYWALLED_SOURCE_DOMAINS,
     WORLD_GEOPOLITICS_KEYWORDS,
     WORLD_MACRO_KEYWORDS,
 )
 from app.db.enums import CoverageTier, NewsDomain
 from app.db.models.news import NewsEvent
-from app.utils import classify_domain, matches_keywords
+from app.utils import classify_domain, is_paywalled, matches_keywords
 from app.db.session import SessionLocal, readonly_session
 from app.providers.alpha_vantage_news import get_news_provider
 from app.tools.research import ScreenFilters, screen_stocks
@@ -59,10 +63,13 @@ class RawEvent:
     industry_id: int | None = None
     # Alpha Vantage structure carried into ingest: the API's extractive summary (stored as the
     # canonical record), its topic-derived domain hint, and its relevance (the ingest filter + the
-    # stored significance).
+    # stored significance). GDELT events reuse the same fields (summary = headline, domain_hint =
+    # "geopolitics", relevance = the GDELT floor).
     summary: str | None = None
     domain_hint: str | None = None
     relevance: float | None = None
+    # Geographic dimension — set from GDELT's source country; null for Alpha Vantage events.
+    source_country: str | None = None
 
 
 async def _fetch_events() -> list[RawEvent]:
@@ -188,6 +195,74 @@ async def _wakeup_deep_research() -> dict:
     return await deep_research.run_autonomous()
 
 
+async def persist_events(raw: list[RawEvent], task) -> tuple[set[int], bool]:
+    """The shared ingest core for every source (Alpha Vantage *and* GDELT): dedupe, filter, write.
+
+    Defined once here so both pipelines apply the same rules. Records its counts on ``task`` and
+    returns ``(touched_company_ids, wake)`` for the caller's event/signal-convergence triggers —
+    GDELT events name no company and clear no wakeup bar, so that caller simply ignores the return."""
+    # 1. Lexical dedup gate (in-batch + already-stored URLs and normalized headlines). The source's
+    #    structured/curated feed makes a semantic (embedding) dedup pass unnecessary — reworded
+    #    reprints share the headline key.
+    task.count("fetched", len(raw))
+    unique = _dedupe_batch(raw)
+    known_urls = await _existing_urls([e.url for e in unique])
+    known_headlines = await _existing_headlines()
+    events = [
+        e
+        for e in unique
+        if e.url not in known_urls and _norm_headline(e.headline) not in known_headlines
+    ]
+    task.count("deduped", len(raw) - len(events))
+
+    # 2. Relevance filter — trust the source's score (AV relevance / the GDELT floor) instead of an
+    #    LLM importance call. Drop low-relevance items here, before anything is written.
+    before_relevance = len(events)
+    events = [e for e in events if (e.relevance or 0.0) >= ALPHAVANTAGE_MIN_RELEVANCE]
+    task.count("dropped_low_relevance", before_relevance - len(events))
+
+    # 3. Accessibility gate — drop hard-paywalled outlets before write so every surfaced link
+    #    actually opens (article URLs are first-class content; a subscription wall is a dead end).
+    before_paywall = len(events)
+    events = [e for e in events if not is_paywalled(e.url, PAYWALLED_SOURCE_DOMAINS)]
+    task.count("dropped_paywalled", before_paywall - len(events))
+
+    touched: set[int] = set()
+    wake = False
+    async with SessionLocal() as session:
+        for event in events:
+            # 4. File the event: the source summary is canonical, its score is the significance, and
+            #    the domain is resolved keyword-geopolitics-first → source hint → router. No LLM, no
+            #    embedding — synthesis happens per-section, not per-article.
+            significance = event.relevance or 0.0
+            domain_key = _resolve_domain(event)
+            session.add(
+                NewsEvent(
+                    company_id=event.company_id,
+                    industry_id=event.industry_id,
+                    url=event.url,
+                    source=event.source,
+                    published_at=event.published_at,
+                    headline=event.headline,
+                    tickers=event.tickers,
+                    significance=significance,
+                    domain=NewsDomain(domain_key),
+                    summary=event.summary,
+                    source_country=event.source_country,
+                )
+            )
+            # Commit per event so a long sweep is restart-safe: an interrupted run keeps every event
+            # it had already processed (the URL-unique constraint keeps a re-run idempotent), and
+            # /world populates progressively instead of all-or-nothing at the end.
+            await session.commit()
+            if event.company_id is not None:
+                touched.add(event.company_id)
+            if significance >= DEEP_RESEARCH_WAKEUP_SIGNIFICANCE:
+                wake = True
+            task.count("written")
+    return touched, wake
+
+
 async def run() -> None:
     # One ingest at a time: the scheduled job and the digest's inline call would otherwise race
     # past the URL dedup and collide on the unique constraint. Skips write no task row; the
@@ -197,67 +272,15 @@ async def run() -> None:
             return
 
         async with run_task(WF_NEWS_INGEST) as task:
-            # 1. Pull raw events, then run the lexical dedup gate (in-batch + already-stored URLs and
-            #    normalized headlines). Alpha Vantage's structured tickers/topics make a semantic
-            #    (embedding) dedup pass unnecessary — reworded reprints share the headline key.
             raw = await _fetch_events()
-            task.count("fetched", len(raw))
-            unique = _dedupe_batch(raw)
-            known_urls = await _existing_urls([e.url for e in unique])
-            known_headlines = await _existing_headlines()
-            events = [
-                e
-                for e in unique
-                if e.url not in known_urls and _norm_headline(e.headline) not in known_headlines
-            ]
-            task.count("deduped", len(raw) - len(events))
+            touched, wake = await persist_events(raw, task)
 
-            # 1b. Relevance filter — trust Alpha Vantage's scoring instead of an LLM importance call.
-            #     Drop low-relevance items here, before anything is written.
-            before_relevance = len(events)
-            events = [e for e in events if (e.relevance or 0.0) >= ALPHAVANTAGE_MIN_RELEVANCE]
-            task.count("dropped_low_relevance", before_relevance - len(events))
-
-            touched: set[int] = set()
-            wake = False
-            async with SessionLocal() as session:
-                for event in events:
-                    # 2. File the event: AV's summary is canonical, its relevance is the significance,
-                    #    and the domain is resolved keyword-geopolitics-first → AV hint → router. No
-                    #    LLM, no embedding — synthesis happens per-section, not per-article.
-                    significance = event.relevance or 0.0
-                    domain_key = _resolve_domain(event)
-                    session.add(
-                        NewsEvent(
-                            company_id=event.company_id,
-                            industry_id=event.industry_id,
-                            url=event.url,
-                            source=event.source,
-                            published_at=event.published_at,
-                            headline=event.headline,
-                            tickers=event.tickers,
-                            significance=significance,
-                            domain=NewsDomain(domain_key),
-                            summary=event.summary,
-                        )
-                    )
-                    # Commit per event so a long sweep is restart-safe: an interrupted run keeps
-                    # every event it had already processed (the URL-unique constraint keeps a
-                    # re-run idempotent), and /world populates progressively instead of all-or-
-                    # nothing at the end.
-                    await session.commit()
-                    if event.company_id is not None:
-                        touched.add(event.company_id)
-                    if significance >= DEEP_RESEARCH_WAKEUP_SIGNIFICANCE:
-                        wake = True
-                    task.count("written")
-
-            # 3. Enqueue re-scoring for affected companies. — event trigger
+            # Enqueue re-scoring for affected companies. — event trigger
             if touched:
                 await _enqueue_rescore(touched)
 
-            # 4. A material event clears the wakeup bar: call the researcher back, after the
-            #    re-score so the session sees fresh scores. — signal-convergence trigger
+            # A material event clears the wakeup bar: call the researcher back, after the re-score so
+            # the session sees fresh scores. — signal-convergence trigger
             if wake:
                 await _wakeup_deep_research()
                 task.count("wakeup")

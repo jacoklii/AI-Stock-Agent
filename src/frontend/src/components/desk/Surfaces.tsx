@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ReactNode, RefObject } from "react";
 import { useMutationState } from "@tanstack/react-query";
 
@@ -6,6 +6,7 @@ import {
   CHAT_SEND_KEY,
   useChatMessages,
   useCompanies,
+  useEvents,
   useIndustries,
   useInbox,
   useInboxAction,
@@ -14,16 +15,13 @@ import {
   useResearchList,
   useSendChat,
 } from "../../api/queries";
+import { ArticleRow } from "../ArticleRow";
 import { EmptyState, Loading } from "../EmptyState";
 import { FreshnessStamp } from "../FreshnessStamp";
-import { OriginBadge } from "../OriginBadge";
+import { ChevronRight } from "../Icons";
 import { Prose } from "../Prose";
 import { SourceChips } from "../SourceChips";
-import { StatusPill } from "../StatusPill";
-import { AgentStatus } from "../AgentStatus";
-import { progressPhrases } from "./agentPhrases";
 import { fmtDateTime } from "../../lib/format";
-import { isStalled } from "../../lib/freshness";
 import type { ResearchSessionOut } from "../../api/types";
 
 /** Shared left-panel chrome: a caps title on a hairline, then a scrollable body. */
@@ -41,10 +39,12 @@ export function SurfaceFrame({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <header
-        className="flex h-10 shrink-0 items-center px-4"
+        className="flex h-11 shrink-0 items-center px-4"
         style={{ borderBottom: "1px solid var(--border-default)", background: "var(--surface-panel)" }}
       >
-        <span className="terminal-label">{title}</span>
+        <span className="text-[15px] font-semibold" style={{ color: "var(--text-strong)", fontFamily: "var(--font-sans)", letterSpacing: "-0.01em" }}>
+          {title}
+        </span>
         {action && <span className="ml-auto">{action}</span>}
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto p-3">{children}</div>
@@ -123,7 +123,7 @@ export function WatchlistSurface({
                     )}
                   </span>
                   {i.flagged && (
-                    <span className="shrink-0 terminal-label" style={{ color: "var(--amber-500)" }}>
+                    <span className="shrink-0 terminal-label" style={{ color: "var(--accent)" }}>
                       critical
                     </span>
                   )}
@@ -143,35 +143,63 @@ export function WatchlistSurface({
 
 // --- Research sessions -------------------------------------------------------
 
-function SessionRow({ session, onSelect }: { session: ResearchSessionOut; onSelect: (id: number) => void }) {
-  const stalled = session.status === "open" && isStalled(session.last_active_at);
+function fmtSessionWhen(iso: string): string {
+  const d = new Date(iso);
+  const date = d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+  const time = d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "UTC" });
+  return `${date} · ${time}`;
+}
+
+function fmtElapsed(fromIso: string, toIso: string): string {
+  const secs = Math.max(0, Math.floor((+new Date(toIso) - +new Date(fromIso)) / 1000));
+  if (secs < 3600) return `${Math.floor(secs / 60)}m ${secs % 60}s`;
+  return `${Math.floor(secs / 3600)}h ${Math.floor((secs % 3600) / 60)}m`;
+}
+
+/** The single live session, surfaced at the top — a pulsing "active research" mark, the topic, and a
+ *  one-line telemetry read (turn · sources · elapsed). */
+function ActiveSession({ session, onSelect }: { session: ResearchSessionOut; onSelect: (id: number) => void }) {
+  const p = session.progress;
+  const elapsed = fmtElapsed(session.opened_at, session.last_active_at);
   return (
-    <button type="button" className={rowClass} onClick={() => onSelect(session.state_id)}>
-      <span className="flex items-center justify-between gap-2">
-        <span className="truncate text-sm" style={{ color: "var(--text-strong)" }}>{session.topic}</span>
-        <span className="flex shrink-0 items-center gap-1.5">
-          <OriginBadge initiatedBy={session.initiated_by} />
-          <StatusPill status={session.status} />
-        </span>
+    <button type="button" onClick={() => onSelect(session.state_id)} className="block w-full text-left">
+      <span className="mb-1.5 flex items-center gap-1.5">
+        <span className="h-1.5 w-1.5 rounded-full asa-pulse" style={{ background: "var(--accent)" }} />
+        <span className="terminal-label" style={{ color: "var(--accent)" }}>Active research</span>
       </span>
-      {session.status === "open" && session.progress ? (
-        <span className="mt-1 block">
-          <AgentStatus phrases={progressPhrases(session.progress)} />
+      <span className="block text-sm font-semibold leading-snug line-clamp-2" style={{ color: "var(--text-strong)", fontFamily: "var(--font-sans)" }}>
+        {session.topic}
+      </span>
+      <span className="mt-1 block font-data text-[11px]" style={{ color: "var(--text-muted)" }}>
+        {p
+          ? `turn ${p.iteration}/${p.max_iters} · ${p.sources} source${p.sources === 1 ? "" : "s"} · ${elapsed}`
+          : `running · ${elapsed}`}
+      </span>
+    </button>
+  );
+}
+
+/** A session row in the list — title + chevron, then a clean status·date·time meta line. The full
+ *  findings render in the right Agent panel, never as a markdown dump here. */
+function SessionRow({ session, onSelect }: { session: ResearchSessionOut; onSelect: (id: number) => void }) {
+  const closed = session.status === "closed";
+  const when = closed ? session.closed_at ?? session.last_active_at : session.last_active_at;
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(session.state_id)}
+      className="group block w-full rounded-md px-1.5 py-2.5 text-left transition-colors hover:bg-[var(--surface-hover)]"
+    >
+      <span className="flex items-start justify-between gap-2">
+        <span className="text-sm font-semibold leading-snug line-clamp-2" style={{ color: "var(--text-strong)", fontFamily: "var(--font-sans)" }}>
+          {session.topic}
         </span>
-      ) : (
-        session.findings && (
-          <span className="mt-1 line-clamp-2 block text-xs" style={{ color: "var(--text-muted)" }}>
-            {session.findings}
-          </span>
-        )
-      )}
-      <span className="mt-1 block">
-        <FreshnessStamp
-          iso={session.status === "closed" ? session.closed_at : session.last_active_at}
-          label={session.status === "closed" ? "closed" : "active"}
-          thresholdHours={session.status === "closed" ? 168 : 24}
-          stalled={stalled}
-        />
+        <ChevronRight size={14} className="mt-0.5 shrink-0 opacity-30 transition-opacity group-hover:opacity-70" style={{ color: "var(--text-muted)" }} />
+      </span>
+      <span className="mt-1 flex items-center gap-1.5 font-data text-[11px]" style={{ color: "var(--text-dim)" }}>
+        <span className="h-1.5 w-1.5 rounded-full" style={{ background: closed ? "var(--text-muted)" : "var(--accent)" }} />
+        <span>{closed ? "done" : "open"}</span>
+        <span>· {fmtSessionWhen(when)}</span>
       </span>
     </button>
   );
@@ -189,6 +217,14 @@ export function ResearchSurface({
   const open = useResearchList("open");
   const closed = useResearchList("closed", 30);
   const openResearch = useOpenResearch();
+  const openList = open.data ?? [];
+  const closedList = closed.data ?? [];
+  const total = openList.length + closedList.length;
+  // The most recently active open session leads as "active now"; everything else is the log.
+  const sortByActive = (a: ResearchSessionOut, b: ResearchSessionOut) =>
+    +new Date(b.last_active_at) - +new Date(a.last_active_at);
+  const active = [...openList].sort(sortByActive)[0] ?? null;
+  const rest = [...openList.filter((s) => s !== active), ...closedList].sort(sortByActive);
 
   const start = () => {
     const t = draft.trim();
@@ -199,6 +235,11 @@ export function ResearchSurface({
   return (
     <SurfaceFrame
       title="Research"
+      action={
+        <span className="font-data text-[11px]" style={{ color: "var(--text-dim)" }}>
+          {total} session{total === 1 ? "" : "s"}
+        </span>
+      }
       footer={
         <form
           onSubmit={(e) => {
@@ -218,41 +259,37 @@ export function ResearchSurface({
             type="submit"
             disabled={openResearch.isPending || !draft.trim()}
             className="rounded-md px-3 py-1.5 text-sm font-medium disabled:opacity-40"
-            style={{ background: "var(--accent)", color: "var(--paper-0)" }}
+            style={{ background: "var(--accent)", color: "var(--on-accent)" }}
           >
             {openResearch.isPending ? "…" : "Research"}
           </button>
         </form>
       }
     >
-      <p className="terminal-label mb-1.5">Open ({open.data?.length ?? 0} / 3)</p>
-      {open.isLoading ? (
-        <Loading />
-      ) : (open.data ?? []).length > 0 ? (
-        <ul className="space-y-0.5">
-          {(open.data ?? []).map((s) => (
-            <li key={s.state_id}>
-              <SessionRow session={s} onSelect={onSelect} />
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="px-2.5 text-sm" style={{ color: "var(--text-dim)" }}>
-          Nothing open. The agent opens its own when breadth surfaces something material.
-        </p>
+      {active && (
+        <section className="mb-5 px-1.5">
+          <p className="terminal-label mb-2">Active now</p>
+          <ActiveSession session={active} onSelect={onSelect} />
+        </section>
       )}
 
-      <p className="terminal-label mb-1.5 mt-4">Closed</p>
-      {(closed.data ?? []).length > 0 ? (
-        <ul className="space-y-0.5">
-          {(closed.data ?? []).map((s) => (
+      <p className="terminal-label mb-1 px-1.5">Sessions</p>
+      {open.isLoading ? (
+        <Loading />
+      ) : rest.length === 0 ? (
+        <p className="px-1.5 py-1 text-sm" style={{ color: "var(--text-dim)" }}>
+          {active
+            ? "No other sessions yet."
+            : "Nothing yet. The agent opens its own when breadth surfaces something material."}
+        </p>
+      ) : (
+        <ul>
+          {rest.map((s) => (
             <li key={s.state_id}>
               <SessionRow session={s} onSelect={onSelect} />
             </li>
           ))}
         </ul>
-      ) : (
-        <p className="px-2.5 text-sm" style={{ color: "var(--text-dim)" }}>No closed sessions yet.</p>
       )}
     </SurfaceFrame>
   );
@@ -318,7 +355,7 @@ export function ChatSurface({
             type="submit"
             disabled={send.isPending || !draft.trim()}
             className="rounded-md px-3 py-1.5 text-sm font-medium disabled:opacity-40"
-            style={{ background: "var(--accent)", color: "var(--paper-0)" }}
+            style={{ background: "var(--accent)", color: "var(--on-accent)" }}
           >
             Send
           </button>
@@ -338,7 +375,7 @@ export function ChatSurface({
               className="max-w-[88%] rounded-md px-2.5 py-1.5"
               style={
                 m.role === "user"
-                  ? { background: "var(--ink-1)", color: "var(--paper-0)" }
+                  ? { background: "var(--accent)", color: "var(--on-accent)" }
                   : { background: "var(--surface-hover)", color: "var(--text-strong)" }
               }
             >
@@ -379,9 +416,9 @@ export function ChatSurface({
         ))}
         {pendingAsks.map((content, i) => (
           <div key={`pending-${i}`} className="flex justify-end">
-            <div className="max-w-[88%] rounded-md px-2.5 py-1.5 opacity-70" style={{ background: "var(--ink-1)", color: "var(--paper-0)" }}>
+            <div className="max-w-[88%] rounded-md px-2.5 py-1.5 opacity-70" style={{ background: "var(--accent)", color: "var(--on-accent)" }}>
               <p className="prose-snapshot text-sm leading-relaxed">{content}</p>
-              <span className="mt-1 block text-xs" style={{ color: "var(--paper-200)" }}>sending…</span>
+              <span className="mt-1 block text-xs" style={{ color: "color-mix(in oklch, var(--on-accent) 55%, transparent)" }}>sending…</span>
             </div>
           </div>
         ))}
@@ -400,12 +437,17 @@ const CHANNEL_LABEL: Record<string, string> = {
   whatsapp: "WhatsApp",
 };
 
+// The four surveillance domains, in the fixed top-down order /world renders, with section titles.
+const NEWS_DOMAINS: [key: string, title: string][] = [
+  ["geopolitics", "Geopolitics & global events"],
+  ["macro", "Macroeconomics"],
+  ["industry", "Industry trends"],
+  ["market", "General market"],
+];
+
 export function NewsSurface() {
-  const inbox = useInbox();
-  const markRead = useInboxAction("read");
-  const dismiss = useInboxAction("dismiss");
+  const [tab, setTab] = useState<"events" | "deliveries">("events");
   const sweep = useOpsSweep();
-  const items = (inbox.data ?? []).filter((n) => !n.dismissed_at);
 
   return (
     <SurfaceFrame
@@ -423,54 +465,109 @@ export function NewsSurface() {
         </button>
       }
     >
-      {inbox.isLoading ? (
-        <Loading />
-      ) : items.length === 0 ? (
-        <EmptyState message="Nothing yet." hint="Digest, brief, and alert deliveries mirror here." />
-      ) : (
-        <ul className="space-y-1.5">
-          {items.map((n) => {
-            const unread = !n.read_at;
-            return (
-              <li
-                key={n.id}
-                className="rounded-md p-2.5"
-                style={{ border: "1px solid var(--border-default)", background: unread ? "var(--signal-soft)" : "var(--surface-panel)" }}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      {unread && <span className="h-1.5 w-1.5 rounded-full" style={{ background: "var(--accent)" }} />}
-                      <span className="text-sm font-medium" style={{ color: "var(--text-strong)" }}>
-                        {n.title ?? n.template ?? n.ref_type ?? "notification"}
-                      </span>
-                      <span className="terminal-label">{CHANNEL_LABEL[n.channel] ?? n.channel}</span>
-                    </div>
-                    {n.body && (
-                      <p className="prose-snapshot mt-1 line-clamp-4 text-sm" style={{ color: "var(--text-body)" }}>
-                        {n.body}
-                      </p>
-                    )}
-                    <span className="mt-1 block">
-                      <FreshnessStamp iso={n.sent_at} label="sent" thresholdHours={48} />
-                    </span>
-                  </div>
-                  <div className="flex shrink-0 gap-1">
-                    {unread && (
-                      <button type="button" onClick={() => markRead.mutate(n.id)} className="rounded px-1.5 py-0.5 text-xs hover:bg-[var(--surface-hover)]" style={{ color: "var(--text-muted)" }}>
-                        read
-                      </button>
-                    )}
-                    <button type="button" onClick={() => dismiss.mutate(n.id)} className="rounded px-1.5 py-0.5 text-xs hover:bg-[var(--surface-hover)]" style={{ color: "var(--text-muted)" }}>
-                      dismiss
-                    </button>
-                  </div>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      )}
+      <div className="mb-2 flex gap-1">
+        {(["events", "deliveries"] as const).map((id) => {
+          const on = tab === id;
+          return (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setTab(id)}
+              className="rounded px-2 py-0.5 text-xs font-medium capitalize"
+              style={{
+                color: on ? "var(--accent)" : "var(--text-muted)",
+                background: on ? "var(--signal-soft)" : "transparent",
+              }}
+            >
+              {id}
+            </button>
+          );
+        })}
+      </div>
+      {tab === "events" ? <EventsStream /> : <Deliveries />}
     </SurfaceFrame>
+  );
+}
+
+/** The flat cross-domain stream, grouped into distinct per-domain sections. */
+function EventsStream() {
+  const events = useEvents();
+  const rows = events.data ?? [];
+  if (events.isLoading) return <Loading />;
+  if (rows.length === 0) {
+    return <EmptyState message="No events yet." hint="Run a sweep to pull the latest news." />;
+  }
+  return (
+    <div className="space-y-4">
+      {NEWS_DOMAINS.map(([key, title]) => {
+        const inDomain = rows.filter((r) => r.domain === key);
+        if (inDomain.length === 0) return null;
+        return (
+          <section key={key}>
+            <p className="terminal-label mb-1">{title}</p>
+            {inDomain.map((a) => (
+              <ArticleRow key={a.news_event_id} article={a} showDomain={false} />
+            ))}
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Delivered notifications (digest / brief / alert mirrors) — the inbox. */
+function Deliveries() {
+  const inbox = useInbox();
+  const markRead = useInboxAction("read");
+  const dismiss = useInboxAction("dismiss");
+  const items = (inbox.data ?? []).filter((n) => !n.dismissed_at);
+
+  if (inbox.isLoading) return <Loading />;
+  if (items.length === 0) {
+    return <EmptyState message="Nothing yet." hint="Digest, brief, and alert deliveries mirror here." />;
+  }
+  return (
+    <ul className="space-y-1.5">
+      {items.map((n) => {
+        const unread = !n.read_at;
+        return (
+          <li
+            key={n.id}
+            className="rounded-md p-2.5"
+            style={{ border: "1px solid var(--border-default)", background: unread ? "var(--signal-soft)" : "var(--surface-panel)" }}
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5">
+                  {unread && <span className="h-1.5 w-1.5 rounded-full" style={{ background: "var(--accent)" }} />}
+                  <span className="text-sm font-medium" style={{ color: "var(--text-strong)" }}>
+                    {n.title ?? n.template ?? n.ref_type ?? "notification"}
+                  </span>
+                  <span className="terminal-label">{CHANNEL_LABEL[n.channel] ?? n.channel}</span>
+                </div>
+                {n.body && (
+                  <p className="prose-snapshot mt-1 line-clamp-4 text-sm" style={{ color: "var(--text-body)" }}>
+                    {n.body}
+                  </p>
+                )}
+                <span className="mt-1 block">
+                  <FreshnessStamp iso={n.sent_at} label="sent" thresholdHours={48} />
+                </span>
+              </div>
+              <div className="flex shrink-0 gap-1">
+                {unread && (
+                  <button type="button" onClick={() => markRead.mutate(n.id)} className="rounded px-1.5 py-0.5 text-xs hover:bg-[var(--surface-hover)]" style={{ color: "var(--text-muted)" }}>
+                    read
+                  </button>
+                )}
+                <button type="button" onClick={() => dismiss.mutate(n.id)} className="rounded px-1.5 py-0.5 text-xs hover:bg-[var(--surface-hover)]" style={{ color: "var(--text-muted)" }}>
+                  dismiss
+                </button>
+              </div>
+            </div>
+          </li>
+        );
+      })}
+    </ul>
   );
 }

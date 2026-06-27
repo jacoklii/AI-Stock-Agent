@@ -20,7 +20,7 @@ from fastapi import APIRouter
 
 from app.api.schemas import OpsRunResponse
 from app.workflows.message import daily_digest
-from app.workflows.research import market_data_ingest, news_ingest
+from app.workflows.research import gdelt_ingest, market_data_ingest, news_ingest
 
 router = APIRouter(tags=["ops"])
 
@@ -41,11 +41,15 @@ def _trigger(workflow: str, run: Callable[[], Awaitable[object]]) -> OpsRunRespo
 
 @router.post("/ops/sweep", response_model=OpsRunResponse, status_code=202)
 async def sweep() -> OpsRunResponse:
-    """Run one news-ingest cycle now: pull + classify + embed + write events (the scraper sweep).
+    """Run one full news sweep now: both Alpha Vantage (financial) and GDELT (geopolitics).
 
-    A ``workflow_slot`` guard inside the workflow makes a concurrent sweep a no-op, so double-clicks
-    are safe."""
-    return _trigger("news_ingest", news_ingest.run)
+    The user-bounded sweep — fires both ingest pipelines immediately instead of waiting for their
+    crons. Each has its own ``workflow_slot`` (so a concurrent scheduled run no-ops, double-clicks
+    are safe), and GDELT's process-wide rate limiter spaces this call against the steady cron so it
+    can't burst into a 429 — there's always headroom for an on-demand sweep."""
+    _spawn(news_ingest.run())
+    _spawn(gdelt_ingest.run())
+    return OpsRunResponse(workflow="news_ingest+gdelt_ingest")
 
 
 @router.post("/ops/digest", response_model=OpsRunResponse, status_code=202)
