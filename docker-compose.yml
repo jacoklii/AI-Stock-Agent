@@ -18,7 +18,7 @@ services:
       - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     # Persisted data lives under the repo's data folder (gitignored), per the repo structure.
     volumes:
-      - ./src/backend/data/postgres:/var/lib/postgresql/data
+      - ./backend/data/postgres:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-stockagent} -d ${POSTGRES_DB:-stockagent}"]
       interval: 5s
@@ -26,7 +26,7 @@ services:
       retries: 10
 
   migrate:
-    build: ./src/backend
+    build: ./backend
     container_name: ai-stock-agent-migrate
     command: ["alembic", "upgrade", "head"]
     depends_on:
@@ -36,7 +36,7 @@ services:
     restart: "no"
 
   api:
-    build: ./src/backend
+    build: ./backend
     container_name: ai-stock-agent-api
     restart: unless-stopped
     depends_on:
@@ -56,7 +56,7 @@ services:
   # The SPA: nginx serving the built bundle, proxying /api/* to the api container.
   # Local entry point: http://localhost:3000 (no Caddy needed off-VM).
   web:
-    build: ./src/frontend
+    build: ./frontend
     container_name: ai-stock-agent-web
     restart: unless-stopped
     depends_on:

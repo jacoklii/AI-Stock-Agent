@@ -2,7 +2,7 @@
 .env
 
 # Actual state — Postgres volume + pg_dump snapshots (per the repo structure, all gitignored)
-src/backend/data/
+backend/data/
 
 # Python
 __pycache__/
@@ -16,7 +16,7 @@ venv/
 
 # Node (frontend) — src/api/schema.d.ts is generated but committed by design
 node_modules/
-src/frontend/dist/
+frontend/dist/
 
 # OS / editor
 .DS_Store

@@ -30,7 +30,7 @@ dev = [
 include = ["app*"]
 
 [tool.pytest.ini_options]
-# src/backend is the import root; tests import `app.*`.
+# backend/ is the import root; tests import `app.*`.
 pythonpath = ["."]
 testpaths = ["tests"]
 asyncio_mode = "auto"
